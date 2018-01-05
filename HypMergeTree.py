@@ -1,6 +1,25 @@
 import numpy as np 
 import matplotlib.pyplot as plt
 
+def getPointsNumDenom(num, denoms):
+    res = np.array([np.inf, np.inf])
+    if np.abs(denoms[0]) > 0:
+        res[0] = num/denoms[0]
+    if np.abs(denoms[1]) > 0:
+        res[1] = num/denoms[1]
+    res = [np.min(res), np.max(res)]
+    return res
+
+def printPLPR(z, PL, PR):
+    N = PL.shape[0]-1
+    for i in range(N):
+        s1 = "%i"%z[i]
+        for j in range(i+1, N+1):
+            s2 = "inf"
+            if j < N:
+                s2 = "%i"%z[j]
+            print("%s - %s: (%g, %g)"%(s1, s2, PL[i, j], PR[i, j]))
+
 class HypMergeTree(object):
     """
     A class for storing, rendering, and computing information about
@@ -47,21 +66,25 @@ class HypMergeTree(object):
         #Plot bisectors
         if plotBisectors:
             (PL, PR) = self.getBisectorPoints()
+            printPLPR(z, PL, PR)
             for i, c in zip(range(N), color_cycle()):
-                for j in range(N+1):
+                for j in [N] + np.arange(N).tolist():
                     if i == j:
                         continue
                     xl = PL[i, j]
                     xr = PR[i, j]
-                    if np.isinf(xl) or np.isinf(xr):
-                        continue
-                    r = (xr-xl)/2.0
-                    xs = xl+r+XSemi[:, 0]*r
-                    ys = r*XSemi[:, 1]
+                    if np.isinf(xr):
+                        #Vertical line
+                        ys = np.array([0, ylims[1]])
+                        xs = np.array([xl, xl])
+                    else:
+                        r = (xr-xl)/2.0
+                        xs = xl+r+XSemi[:, 0]*r
+                        ys = r*XSemi[:, 1]
                     idx = np.arange(len(xs))
                     idx = idx[(xs >= 0)*(xs <= z[-1])]
                     if j == N:
-                        plt.plot(xs[idx], ys[idx], color = c['color'], linestyle = '--')
+                        plt.plot(xs[idx], ys[idx], color = c['color'], linestyle = ':', linewidth = 3)
                     elif i < j:
                         plt.plot(xs[idx], ys[idx], color = c['color'])
                     else:
@@ -109,34 +132,35 @@ class HypMergeTree(object):
                 PL[k, N] = z[k] - rad
                 PR[k, N] = z[k] + rad
         #Corollary 2.i (bisector between -1 and z_n)
-        zs = [zn/(np.sqrt(zn-z[-2]) + i) for i in [1.0, -1.0]]
-        PL[0, N-1] = min(zs)
-        PR[0, N-1] = max(zs)
+        denoms = [(np.sqrt(zn-z[-2]) + i) for i in [1.0, -1.0]]
+        zs = getPointsNumDenom(zn, denoms)
+        PL[0, N-1] = zs[0]
+        PR[0, N-1] = zs[1]
         #Corollary 2.ii (bisector between -1 and -1 < k < N)
         for k in range(1, N-1):
             num = z[k]*np.sqrt(z[k+1]-z[k-1])
             a = np.sqrt(z[k+1]-z[k-1])
             b = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
-            zs = [num/(a+b), num/(a-b)]
-            PL[0, k] = min(zs)
-            PR[0, k] = max(zs)
+            zs = getPointsNumDenom(num, [a+b, a-b])
+            PL[0, k] = zs[0]
+            PR[0, k] = zs[1]
         #Corollary 2.iii (bisector between -1 < k < N and N)
         for k in range(1, N-1):
             a = np.sqrt((z[k+1]-z[k-1])*(zn-z[-2]))
             b = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
             num = a*z[k] + b*zn
-            zs = [num/(a+b), num/(a-b)]
-            PL[k, N-1] = min(zs)
-            PR[k, N-1] = max(zs)
+            zs = getPointsNumDenom(num, [a+b, a-b])
+            PL[k, N-1] = zs[0]
+            PR[k, N-1] = zs[1]
         #Corollary 2.iv (bisector between -1 < k < N and k < j < N)
         for k in range(1, N-1):
             for j in range(k+1, N-1):
                 a = np.sqrt((z[j]-z[j-1])*(z[j+1]-z[j])*(z[k+1]-z[k-1]))
                 b = np.sqrt((z[k]-z[k-1])*(z[k+1]-z[k])*(z[j+1]-z[j-1]))
                 num = a*z[k] + b*z[j]
-                zs = [num/(a+b), num/(a-b)]
-                PL[k, j] = min(zs)
-                PR[k, j] = max(zs)
+                zs = getPointsNumDenom(num, [a+b, a-b])
+                PL[k, j] = zs[0]
+                PR[k, j] = zs[1]
         #Symmetrize
         PL = np.minimum(PL, PL.T)
         PR = np.minimum(PR, PR.T)
@@ -146,6 +170,6 @@ class HypMergeTree(object):
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
-    HMT.z = np.array([0, 1, 3])
+    HMT.z = np.array([0, 1, 2])
     HMT.render(hRInfty = 2.0)
     plt.show()
