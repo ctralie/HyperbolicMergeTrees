@@ -107,7 +107,7 @@ class HypMergeTree(object):
         rs[-1] = rInfty
         rs[0] = z[-1]/(4*rInfty) #r_{-1} in Francis's notes
         rs[-2] = z[-1]*(z[-1] - z[-2])/(4*rInfty) #r_n
-        rs[1:-2] = (z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(4*rInfty*(z[2::]-z[1:-1])) #r_k
+        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(4*rInfty*(z[2::]-z[1:-1])) #r_k
         return rs
 
     def getBisectorPoints(self):
@@ -170,6 +170,6 @@ class HypMergeTree(object):
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
-    HMT.z = np.array([0, 1, 2])
-    HMT.render(hRInfty = 2.0)
+    HMT.z = np.array([0, 1, 6])
+    HMT.render(hRInfty = 4.0)
     plt.show()
