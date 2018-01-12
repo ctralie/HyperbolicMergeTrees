@@ -1,12 +1,12 @@
 import numpy as np 
 import matplotlib.pyplot as plt
 
-def getPointsNumDenom(num, denoms):
+def getPointsNumDenom(a, b, c, d):
     res = np.array([np.inf, np.inf])
-    if np.abs(denoms[0]) > 0:
-        res[0] = num/denoms[0]
-    if np.abs(denoms[1]) > 0:
-        res[1] = num/denoms[1]
+    if np.abs(c + d) > 0:
+        res[0] = (a + b) / (c + d)
+    if np.abs(c - d) > 0:
+        res[1] = (a - b) / (c - d)
     res = [np.min(res), np.max(res)]
     return res
 
@@ -131,42 +131,18 @@ class HypMergeTree(object):
                 rad = np.sqrt(zn*(zn-z[-2]))
                 PL[k, N] = z[k] - rad
                 PR[k, N] = z[k] + rad
-        #Corollary 2.i (bisector between -1 and z_n)
-        denoms = [(np.sqrt(zn-z[-2]) + i) for i in [1.0, -1.0]]
-        zs = getPointsNumDenom(zn, denoms)
-        PL[0, N-1] = zs[0]
-        PR[0, N-1] = zs[1]
-        #Corollary 2.ii (bisector between -1 and -1 < k < N)
-        for k in range(1, N-1):
-            num = z[k]*np.sqrt(z[k+1]-z[k-1])
-            a = np.sqrt(z[k+1]-z[k-1])
-            b = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
-            zs = getPointsNumDenom(num, [a+b, a-b])
-            PL[0, k] = zs[0]
-            PR[0, k] = zs[1]
-        #Corollary 2.iii (bisector between -1 < k < N and N)
-        for k in range(1, N-1):
-            if self.beforeFix:
-                a = np.sqrt((z[k+1]-z[k-1])*(zn-z[-2]))
-                b = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
-                num = a*z[k] + b*zn
-            else:
-                num = z[k]*np.sqrt((z[k+1]-z[k-1])*(zn-z[-2])) + \
-                    zn*np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
-                a = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
-                b = np.sqrt((z[k+1]-z[k-1])*(zn-z[-2]))
-            zs = getPointsNumDenom(num, [a+b, a-b])
-            PL[k, N-1] = zs[0]
-            PR[k, N-1] = zs[1]
-        #Corollary 2.iv (bisector between -1 < k < N and k < j < N)
-        for k in range(1, N-1):
-            for j in range(k+1, N-1):
-                a = np.sqrt((z[j]-z[j-1])*(z[j+1]-z[j])*(z[k+1]-z[k-1]))
-                b = np.sqrt((z[k]-z[k-1])*(z[k+1]-z[k])*(z[j+1]-z[j-1]))
-                num = a*z[k] + b*z[j]
-                zs = getPointsNumDenom(num, [a+b, a-b])
-                PL[k, j] = zs[0]
-                PR[k, j] = zs[1]
+        #Corollary 2 in Francis's writeup
+        rsSqrt = np.sqrt(self.getHorocycleRadii(1.0))
+        print(rsSqrt)
+        for i in range(N):
+            d = rsSqrt[i]
+            for j in range(i+1, N):
+                a = rsSqrt[j]*z[i]
+                b = rsSqrt[i]*z[j]
+                c = rsSqrt[j]
+                res = getPointsNumDenom(a, b, c, d)
+                PL[i, j] = res[0]
+                PR[i, j] = res[1]
         #Symmetrize
         PL = np.minimum(PL, PL.T)
         PR = np.minimum(PR, PR.T)
@@ -176,15 +152,10 @@ class HypMergeTree(object):
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
-    HMT.beforeFix = True
-    HMT.z = np.array([0, 1, 6])
-    HMT.render(hRInfty = 4.0)
+    HMT.z = np.array([0, 1, 3])
+    HMT.render(hRInfty = 1.0)
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
-    if HMT.beforeFix:
-        s += "_before"
-    else:
-        s += "_after"
     s += ".svg"
     plt.savefig(s, bbox_inches = 'tight')
