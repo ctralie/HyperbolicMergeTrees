@@ -107,7 +107,7 @@ class HypMergeTree(object):
         rs[-1] = rInfty
         rs[0] = z[-1]/(4*rInfty) #r_{-1} in Francis's notes
         rs[-2] = z[-1]*(z[-1] - z[-2])/(4*rInfty) #r_n
-        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(4*rInfty*(z[2::]-z[1:-1])) #r_k
+        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(4*rInfty*(z[2::]-z[0:-2])) #r_k
         return rs
 
     def getBisectorPoints(self):
@@ -146,9 +146,15 @@ class HypMergeTree(object):
             PR[0, k] = zs[1]
         #Corollary 2.iii (bisector between -1 < k < N and N)
         for k in range(1, N-1):
-            a = np.sqrt((z[k+1]-z[k-1])*(zn-z[-2]))
-            b = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
-            num = a*z[k] + b*zn
+            if self.beforeFix:
+                a = np.sqrt((z[k+1]-z[k-1])*(zn-z[-2]))
+                b = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
+                num = a*z[k] + b*zn
+            else:
+                num = z[k]*np.sqrt((z[k+1]-z[k-1])*(zn-z[-2])) + \
+                    zn*np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
+                a = np.sqrt((z[k+1]-z[k])*(z[k]-z[k-1]))
+                b = np.sqrt((z[k+1]-z[k-1])*(zn-z[-2]))
             zs = getPointsNumDenom(num, [a+b, a-b])
             PL[k, N-1] = zs[0]
             PR[k, N-1] = zs[1]
@@ -170,6 +176,15 @@ class HypMergeTree(object):
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
+    HMT.beforeFix = True
     HMT.z = np.array([0, 1, 6])
     HMT.render(hRInfty = 4.0)
-    plt.show()
+    s = "0"
+    for z in HMT.z[1::]:
+        s += "_%g"%z
+    if HMT.beforeFix:
+        s += "_before"
+    else:
+        s += "_after"
+    s += ".svg"
+    plt.savefig(s, bbox_inches = 'tight')
