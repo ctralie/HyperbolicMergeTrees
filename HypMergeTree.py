@@ -28,9 +28,10 @@ class HypMergeTree(object):
     def __init__(self):
         #Vertices (excluding point at infinity and point at zero)
         #By convention, vertex at infinity is indexed by length(z)
-        self.z = np.array([]) 
+        self.z = np.array([])
+        self.radii = np.array([])
     
-    def render(self, plotVertices = True, plotBoundary = True, plotBisectors = True, hRInfty = 0.0):
+    def render(self, plotVertices = True, plotBoundary = True, plotBisectors = True):
         z = self.z
         N = len(z)
         xlims = [-0.2*(z[-1]), 1.2*z[-1]]
@@ -54,14 +55,13 @@ class HypMergeTree(object):
         XSemi[:, 0] = np.cos(t)
         XSemi[:, 1] = np.sin(t)
 
-        if hRInfty > 0:
-            rs = self.getHorocycleRadii(hRInfty)
-            #First draw horocycle at infinity
-            plt.plot([0, z[-1]], [2*rs[-1], 2*rs[-1]], 'gray')
-            ylims[1] = max(ylims[1], 2.2*rs[-1])
-            #Now draw all other horocycles
-            for i in range(N):
-                plt.plot(rs[i]*XCirc[:, 0] + z[i], rs[i]*XCirc[:, 1]+rs[i], 'gray')
+        rs = self.radii
+        #First draw horocycle at infinity
+        plt.plot([0, z[-1]], [rs[-1], rs[-1]], 'gray')
+        ylims[1] = max(ylims[1], 1.1*rs[-1])
+        #Now draw all other horocycles
+        for i in range(N):
+            plt.plot(rs[i]*XCirc[:, 0] + z[i], rs[i]*XCirc[:, 1]+rs[i], 'gray')
         
         #Plot bisectors
         if plotBisectors:
@@ -97,63 +97,58 @@ class HypMergeTree(object):
                 plt.plot(r*XSemi[:, 0] + z[i] + r, r*XSemi[:, 1], 'k')
         plt.axis('equal')
                 
-    def getHorocycleRadii(self, rInfty):
-        z = self.z
+    def setEqualLengthArcs(self, rInfty = None):
+        if self.radii.size > 0:
+            return self.radii
+        if not rInfty:
+            print("Error: Horocycle radii were not specified in advance")
+            return None
+        z = np.array(self.z, dtype = np.float64)
+        rInfty = 1.0*rInfty
         if len(z) < 2:
             print("Error: Can't compute horocycle radii if fewer than two points + point at infinity")
             return None
         N = len(self.z)
         rs = np.zeros(N+1)
         rs[-1] = rInfty
-        rs[0] = z[-1]/(4*rInfty) #r_{-1} in Francis's notes
-        rs[-2] = z[-1]*(z[-1] - z[-2])/(4*rInfty) #r_n
-        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(4*rInfty*(z[2::]-z[0:-2])) #r_k
+        rs[0] = z[-1]/(2.0*rInfty) #r_{-1} in Francis's notes
+        rs[-2] = z[-1]*(z[-1] - z[-2])/(2.0*rInfty) #r_n
+        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(2.0*rInfty*(z[2::]-z[0:-2])) #r_k
+        self.radii = rs
         return rs
 
     def getBisectorPoints(self):
         z = self.z
+        rs = self.radii
+        rsSqrt = np.sqrt(rs)
         N = len(self.z)
         #Right and left points on horizontal circle diameter
         PL = np.inf*np.ones((N+1, N+1))
         PR = np.inf*np.ones((N+1, N+1))
         #First fill in the bisectors between H_{\infty} and H_k
-        #(Corollary 1 in Francis's writeup)
-        zn = z[-1]
-        for k in range(N):
-            if k == 0:
-                PL[k, N] = -np.sqrt(zn)
-                PR[k, N] = -PL[k, N]
-            elif k < N-1:
-                rad = np.sqrt(zn*(z[k]-z[k-1])*(z[k+1]-z[k])/(z[k+1]-z[k-1]))
-                PL[k, N] = z[k] - rad
-                PR[k, N] = z[k] + rad
-            else:
-                rad = np.sqrt(zn*(zn-z[-2]))
-                PL[k, N] = z[k] - rad
-                PR[k, N] = z[k] + rad
-        #Corollary 2 in Francis's writeup
-        rsSqrt = np.sqrt(self.getHorocycleRadii(1.0))
-        print(rsSqrt)
-        for i in range(N):
-            d = rsSqrt[i]
-            for j in range(i+1, N):
-                a = rsSqrt[j]*z[i]
-                b = rsSqrt[i]*z[j]
-                c = rsSqrt[j]
+        rprime = np.sqrt(2)*rsSqrt[0:-1]*rsSqrt[-1]
+        PL[0:-1, N] = z - rprime
+        PR[0:-1, N] = z + rprime
+        #Now fill in the bisectors between all other points
+        for i1 in range(N):
+            d = rsSqrt[i1]
+            for i2 in range(i1+1, N):
+                a = rsSqrt[i2]*z[i1]
+                b = rsSqrt[i1]*z[i2]
+                c = rsSqrt[i2]
                 res = getPointsNumDenom(a, b, c, d)
-                PL[i, j] = res[0]
-                PR[i, j] = res[1]
+                PL[i1, i2] = res[0]
+                PR[i1, i2] = res[1]
         #Symmetrize
         PL = np.minimum(PL, PL.T)
         PR = np.minimum(PR, PR.T)
         return (PL, PR)
-        
-
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
-    HMT.z = np.array([0, 1, 3])
-    HMT.render(hRInfty = 1.0)
+    HMT.z = np.array([0, 1, 2])
+    HMT.radii = np.array([0.5, 0.25, 0.5, 2.0])
+    HMT.render()
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
