@@ -1,5 +1,6 @@
 import numpy as np 
 import matplotlib.pyplot as plt
+from GeomTools import *
 
 def getPointsNumDenom(a, b, c, d):
     res = np.array([np.inf, np.inf])
@@ -31,7 +32,7 @@ class HypMergeTree(object):
         self.z = np.array([])
         self.radii = np.array([])
     
-    def render(self, plotVertices = True, plotBoundary = True, plotBisectors = True):
+    def render(self, plotVertices = True, plotBoundary = True, plotBisectors = True, drawOnly = []):
         z = self.z
         N = len(z)
         xlims = [-0.2*(z[-1]), 1.2*z[-1]]
@@ -66,11 +67,13 @@ class HypMergeTree(object):
         #Plot bisectors
         if plotBisectors:
             (PL, PR) = self.getBisectorPoints()
-            printPLPR(z, PL, PR)
             for i, c in zip(range(N), color_cycle()):
                 for j in [N] + np.arange(N).tolist():
                     if i == j:
                         continue
+                    if len(drawOnly) > 0:
+                        if not(i in drawOnly or j in drawOnly):
+                            continue
                     xl = PL[i, j]
                     xr = PR[i, j]
                     if np.isinf(xr):
@@ -82,7 +85,7 @@ class HypMergeTree(object):
                         xs = xl+r+XSemi[:, 0]*r
                         ys = r*XSemi[:, 1]
                     idx = np.arange(len(xs))
-                    idx = idx[(xs >= 0)*(xs <= z[-1])]
+                    idx = idx[(xs >= 0)*(xs <= z[-1])*(ys<=ylims[-1])]
                     if j == N:
                         plt.plot(xs[idx], ys[idx], color = c['color'], linestyle = ':', linewidth = 3)
                     elif i < j:
@@ -96,7 +99,32 @@ class HypMergeTree(object):
                 r = (z[i+1] - z[i])/2.0
                 plt.plot(r*XSemi[:, 0] + z[i] + r, r*XSemi[:, 1], 'k')
         plt.axis('equal')
-                
+        return {'xlims':xlims, 'ylims':ylims}
+    
+    def renderVoronoiRegionsOneByOne(self, fileprefix):
+        regions = self.getVoronoiDiagram()
+        N = len(self.z)
+        color_cycle = plt.rcParams['axes.prop_cycle']
+        for i, c in zip(range(N), color_cycle()):
+            plt.clf()
+            res = self.render(drawOnly = [i])
+            [xlims, ylims] = [res['xlims'], res['ylims']]
+            for (circle, arc) in regions[i]:
+                arc = np.array(arc)
+                arc[:, 1] = np.minimum(arc[:, 1], ylims[1])
+                if arc[0, 0] == arc[1, 0]:
+                    #Vertical line
+                    plt.plot(arc[:, 0], arc[:, 1], linewidth=2, color = c['color'])
+                else:
+                    [a, b] = circle
+                    r = (b-a)/2.0
+                    theta1 = np.arccos((arc[0, 0]-(a+r))/r)
+                    theta2 = np.arccos((arc[1, 0]-(a+r))/r)
+                    t = np.linspace(theta1, theta2, 100)
+                    plt.plot(a+r+r*np.cos(t), r*np.sin(t), linewidth=2, color = c['color'])
+            plt.savefig("%s_%i.svg"%(fileprefix, i), bbox_inches = 'tight')
+
+
     def setEqualLengthArcs(self, rInfty = None):
         if self.radii.size > 0:
             return self.radii
@@ -143,14 +171,93 @@ class HypMergeTree(object):
         PL = np.minimum(PL, PL.T)
         PR = np.minimum(PR, PR.T)
         return (PL, PR)
+    
+    def getVoronoiDiagram(self):
+        z = self.z
+        rs = self.radii
+        (PL, PR) = self.getBisectorPoints()
+        N = len(z)
+        #For each vertex i, maintain a list of arcs in CCW order
+        regions = []
+        for i in range(N):
+            #region will consist of a list of tuples 
+            #   (circle x endpoints, arc 2x2 matrix endpoints)
+            region = []
+            #Start with the bisector (i-1, i) intersecting the 
+            #geodesic from i-1 to i
+            end1 = [PL[i, i-1], PR[i, i-1]]
+            if i == 0:
+                #Vertical halfline line boundary geodesic on left
+                end2 = [z[0], np.inf]
+            else:
+                #Ordinary semicircle geodesic
+                end2 = [z[i-1], z[i]]
+            x1 = np.zeros((2, 2))
+            x1[:, 0] = end1
+            x2 = np.zeros((2, 2))
+            x2[:, 0] = end2
+            res = intersectArcs(end1, end2, x1, x2)
+            if res:
+                xint = np.array([res[0], res[1]])
+                x1 = np.zeros((2, 2))
+                x1[0, :] = end1
+                x1[1, :] = xint
+                x2 = np.zeros((2, 2))
+                x2[0, :] = xint
+                x2[1, 0] = z[i]
+                region += [(end1, x1), (end2, x2)]
+            else:
+                #This is the case of two vertical lines; take the right
+                #one only, which is the bisector
+                assert(np.isinf(end2[1]))
+                x = np.zeros((2, 2))
+                x[:, 0] = end1[0]
+                x[1, 1] = np.inf
+                region.append((end1, x))
+
+            #Now intersect the geodesic from i to i+1 with the bisector
+            #(i, i+1)
+            if i == N-1:
+                #Vertical halfline line boundary geodesic on right
+                end1 = [z[i], np.inf]
+            else:
+                end1 = [z[i], z[i+1]]
+            end2 = [PL[i, (i+1)], PR[i, i+1]]
+            x1 = np.zeros((2, 2))
+            x1[:, 0] = end1
+            x2 = np.zeros((2, 2))
+            x2[:, 0] = end2
+            res = intersectArcs(end1, end2, x1, x2)
+            if res:
+                xint = np.array([res[0], res[1]])
+                x1 = np.zeros((2, 2))
+                x1[0, 0] = z[i]
+                x1[1, :] = xint
+                x2 = np.zeros((2, 2))
+                x2[0, :] = xint
+                x2[1, :] = end2
+                region += [(end1, x1), (end2, x2)]
+            else:
+                #This is the case of two vertical lines; take the left one
+                #only, which is the bisector
+                assert(i == N-1)
+                x = np.zeros((2, 2))
+                x[:, 0] = end2[0]
+                x[1, 1] = np.inf
+                region.append((end2, x))
+            regions.append(region)
+        return regions
+            
+
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
-    HMT.z = np.array([0, 1, 2])
-    HMT.radii = np.array([0.5, 0.25, 0.5, 2.0])
-    HMT.render()
+    HMT.z = np.array([0, 1, 2, 4, 7])
+    HMT.radii = np.array([0.5, 0.25, 0.5, 0.6, 0.3, 3.0])
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
+    HMT.renderVoronoiRegionsOneByOne(s)
     s += ".svg"
+    plt.clf()
     plt.savefig(s, bbox_inches = 'tight')
