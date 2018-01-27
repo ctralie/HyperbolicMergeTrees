@@ -118,8 +118,8 @@ class HypMergeTree(object):
                 else:
                     [a, b] = circle
                     r = (b-a)/2.0
-                    theta1 = np.arccos((arc[0, 0]-(a+r))/r)
-                    theta2 = np.arccos((arc[1, 0]-(a+r))/r)
+                    theta1 = acoscrop((arc[0, 0]-(a+r))/r)
+                    theta2 = acoscrop((arc[1, 0]-(a+r))/r)
                     t = np.linspace(theta1, theta2, 100)
                     plt.plot(a+r+r*np.cos(t), r*np.sin(t), linewidth=2, color = c['color'])
             plt.savefig("%s_%i.svg"%(fileprefix, i), bbox_inches = 'tight')
@@ -185,78 +185,75 @@ class HypMergeTree(object):
             region = []
             #Start with the bisector (i-1, i) intersecting the 
             #geodesic from i-1 to i
-            end1 = [PL[i, i-1], PR[i, i-1]]
+            endpts1 = [PL[i, i-1], PR[i, i-1]]
             x1 = np.zeros((2, 2))
-            x1[:, 0] = end1
+            if np.isinf(endpts1[1]):
+                x1[:, 0] = endpts1[0]
+                x1[1, 1] = np.inf
+            else:
+                x1[:, 0] = endpts1
             x2 = np.zeros((2, 2))
             if i == 0:
                 #Vertical halfline line boundary geodesic on left
-                end2 = [z[0], np.inf]
+                endpts2 = [z[0], np.inf]
                 x2[:, 0] = z[0]
                 x2[1, 1] = np.inf
             else:
                 #Ordinary semicircle geodesic
-                end2 = [z[i-1], z[i]]
-                x2[:, 0] = end2
-            res = intersectArcs(end1, end2, x1, x2)
-            if res:
-                xint = np.array([res[0], res[1]])
-                x1 = np.zeros((2, 2))
-                x2 = np.zeros((2, 2))
-                if i == 0 or (i > 0 and (rs[i-1] > rs[i])):
-                    #Bisector arcs to the right
-                    x1[0, 0] = end1[1]
-                else:
-                    x1[0, 0] = end1[0]
-                x1[1, :] = xint
-                x2[0, :] = xint
-                x2[1, 0] = z[i]
-                region += [(end1, x1), (end2, x2)]
+                endpts2 = [z[i-1], z[i]]
+                x2[:, 0] = endpts2
+            res = intersectArcs(endpts1, endpts2, x1, x2)
+            assert(res)
+            xint = np.array([res[0], res[1]])
+            x1 = np.zeros((2, 2))
+            x2 = np.zeros((2, 2))
+            if i == 0 or (i > 0 and (rs[i-1] > rs[i])):
+                #Bisector arcs to the right
+                x1[0, 0] = endpts1[1]
             else:
-                #This is the case of two vertical lines; take the right
-                #one only, which is the bisector
-                assert(np.isinf(end2[1]))
-                x = np.zeros((2, 2))
-                x[:, 0] = end1[0]
-                x[1, 1] = np.inf
-                region.append((end1, x))
+                x1[0, 0] = endpts1[0]
+            x1[1, :] = xint
+            if np.isinf(endpts1[1]):
+                x1[0, 1] = np.inf
+            x2[0, :] = xint
+            x2[1, 0] = z[i]
+            region += [(endpts1, x1), (endpts2, x2)]
+
 
             #Now intersect the geodesic from i to i+1 with the bisector
             #(i, i+1)
-            end2 = [PL[i, (i+1)], PR[i, i+1]]
+            endpts2 = [PL[i, (i+1)], PR[i, i+1]]
             x1 = np.zeros((2, 2))
             x2 = np.zeros((2, 2))
-            x2[:, 0] = end2
+            if np.isinf(endpts2[1]):
+                x2[:, 0] = endpts1[0]
+                x2[1, 1] = np.inf
+            else:
+                x2[:, 0] = endpts2
             if i == N-1:
                 #Vertical halfline line boundary geodesic on right
-                end1 = [z[i], np.inf]
+                endpts1 = [z[i], np.inf]
                 x1[:, 0] = z[i]
                 x1[1, 1] = np.inf
             else:
-                end1 = [z[i], z[i+1]]
-                x1[:, 0] = end1
-            res = intersectArcs(end1, end2, x1, x2)
-            if res:
-                xint = np.array([res[0], res[1]])
-                x1 = np.zeros((2, 2))
-                x2 = np.zeros((2, 2))
-                if i == N-1 or (i < N-1 and rs[i] > rs[i+1]):
-                    #Geodesic arcs to the right
-                    x2[1, 0] = end2[1]
-                else:
-                    x2[1, 0] = end2[0]
-                x2[0, :] = xint
-                x1[0, 0] = z[i]
-                x1[1, :] = xint
-                region += [(end1, x1), (end2, x2)]
+                endpts1 = [z[i], z[i+1]]
+                x1[:, 0] = endpts1
+            res = intersectArcs(endpts1, endpts2, x1, x2)
+            assert(res)
+            xint = np.array([res[0], res[1]])
+            x1 = np.zeros((2, 2))
+            x2 = np.zeros((2, 2))
+            if i < N-1 and rs[i] > rs[i+1]:
+                #Geodesic arcs to the right
+                x2[1, 0] = endpts2[1]
             else:
-                #This is the case of two vertical lines; take the left one
-                #only, which is the bisector
-                assert(i == N-1)
-                x = np.zeros((2, 2))
-                x[:, 0] = end2[0]
-                x[1, 1] = np.inf
-                region.append((end2, x))
+                x2[1, 0] = endpts2[0]
+            x2[0, :] = xint
+            if np.isinf(endpts2[1]):
+                x2[1, 1] = np.inf
+            x1[0, 0] = z[i]
+            x1[1, :] = xint
+            region += [(endpts1, x1), (endpts2, x2)]
             regions.append(region)
         return regions
             
@@ -265,11 +262,14 @@ class HypMergeTree(object):
 if __name__ == '__main__':
     HMT = HypMergeTree()
     HMT.z = np.array([0, 1, 2, 4, 7])
-    HMT.radii = np.array([0.5, 0.25, 0.5, 0.6, 0.3, 3.0])
+    np.random.seed(2)
+    HMT.radii = np.array([0.5, 0.6, 0.5, 0.6, 1.5, 3.0])
+    #HMT.radii = np.random.rand(6)
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
     HMT.renderVoronoiRegionsOneByOne(s)
     s += ".svg"
     plt.clf()
+    HMT.render()
     plt.savefig(s, bbox_inches = 'tight')

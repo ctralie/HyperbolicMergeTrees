@@ -1,13 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+def acoscrop(arg):
+    if arg < -1:
+        return np.pi
+    if arg > 1:
+        return 0
+    return np.arccos(arg)
+
 def intersectLineArc(line, circle, ysline, xsarc, doPlot = False):
     ysline = np.sort(ysline)
     [a, b] = circle
     r = (b-a)/2.0
     if doPlot:
-        theta1 = np.arccos((xsarc[0]-(a+r))/r)
-        theta2 = np.arccos((xsarc[1]-(a+r))/r)
+        theta1 = acoscrop((xsarc[0]-(a+r))/r)
+        theta2 = acoscrop((xsarc[1]-(a+r))/r)
         t = np.linspace(theta1, theta2, 100)
         plt.plot(a+r+r*np.cos(t), r*np.sin(t), linewidth=3)
         plt.plot([line[0], line[0]], ysline)
@@ -59,12 +66,12 @@ def intersectArcs(end1, end2, x1, x2, doPlot = False):
     if x >= x1[0, 0] and x <= x1[1, 0] and x >= x2[0, 0] and x <= x2[1, 0]:
         y = np.sqrt(r2**2-(x-(c+r2))**2)
     if doPlot:
-        theta1 = np.arccos((x1[0, 0]-(a+r1))/r1)
-        theta2 = np.arccos((x1[1, 0]-(a+r1))/r1)
+        theta1 = acoscrop((x1[0, 0]-(a+r1))/r1)
+        theta2 = acoscrop((x1[1, 0]-(a+r1))/r1)
         t = np.linspace(theta1, theta2, 100)
         plt.plot(a+r1+r1*np.cos(t), r1*np.sin(t), linewidth=3)
-        theta1 = np.arccos((x2[0, 0]-(c+r2))/r2)
-        theta2 = np.arccos((x2[1, 0]-(c+r2))/r2)
+        theta1 = acoscrop((x2[0, 0]-(c+r2))/r2)
+        theta2 = acoscrop((x2[1, 0]-(c+r2))/r2)
         t = np.linspace(theta1, theta2, 100)
         plt.plot(c+r2+r2*np.cos(t), r2*np.sin(t), linewidth=3)
         t = np.linspace(0, np.pi, 100)
