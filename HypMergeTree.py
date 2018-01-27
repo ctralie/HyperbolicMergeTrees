@@ -101,7 +101,7 @@ class HypMergeTree(object):
         plt.axis('equal')
         return {'xlims':xlims, 'ylims':ylims}
     
-    def renderVoronoiRegionsOneByOne(self, fileprefix):
+    def renderVoronoiRegionsOneByOne(self, fileprefix, drawText = False):
         regions = self.getVoronoiDiagram()
         N = len(self.z)
         color_cycle = plt.rcParams['axes.prop_cycle']
@@ -109,19 +109,29 @@ class HypMergeTree(object):
             plt.clf()
             res = self.render(drawOnly = [i])
             [xlims, ylims] = [res['xlims'], res['ylims']]
-            for (circle, arc) in regions[i]:
+            xs = []
+            ys = []
+            for (arcnum, (circle, arc)) in enumerate(regions[i]):
                 arc = np.array(arc)
                 arc[:, 1] = np.minimum(arc[:, 1], ylims[1])
+                if drawText:
+                    if arcnum == 0:
+                        plt.text(arc[0, 0], arc[0, 1], "%i_0"%arcnum)
+                    plt.text(arc[1, 0], arc[1, 1], "%i_1"%arcnum)
                 if arc[0, 0] == arc[1, 0]:
                     #Vertical line
-                    plt.plot(arc[:, 0], arc[:, 1], linewidth=2, color = c['color'])
+                    xs += arc[:, 0].tolist()
+                    ys += arc[:, 1].tolist()
                 else:
                     [a, b] = circle
                     r = (b-a)/2.0
                     theta1 = acoscrop((arc[0, 0]-(a+r))/r)
                     theta2 = acoscrop((arc[1, 0]-(a+r))/r)
                     t = np.linspace(theta1, theta2, 100)
-                    plt.plot(a+r+r*np.cos(t), r*np.sin(t), linewidth=2, color = c['color'])
+                    xs += (a+r+r*np.cos(t)).tolist()
+                    ys += (r*np.sin(t)).tolist()
+                plt.plot(xs, ys, linewidth=2, color=c['color'])
+                #plt.fill(xs, ys, color=c['color'])
             plt.savefig("%s_%i.svg"%(fileprefix, i), bbox_inches = 'tight')
 
 
@@ -180,80 +190,56 @@ class HypMergeTree(object):
         #For each vertex i, maintain a list of arcs in CCW order
         regions = []
         for i in range(N):
-            #region will consist of a list of tuples 
-            #   (circle x endpoints, arc 2x2 matrix endpoints)
-            region = []
-            #Start with the bisector (i-1, i) intersecting the 
-            #geodesic from i-1 to i
-            endpts1 = [PL[i, i-1], PR[i, i-1]]
+            #Step 1: Start with the boundary arcs (i-1, i) and (i, i+1)
+            #Arc (i-1, i)
+            endpts1 = np.zeros(2)
             x1 = np.zeros((2, 2))
-            if np.isinf(endpts1[1]):
-                x1[:, 0] = endpts1[0]
-                x1[1, 1] = np.inf
-            else:
-                x1[:, 0] = endpts1
-            x2 = np.zeros((2, 2))
             if i == 0:
                 #Vertical halfline line boundary geodesic on left
-                endpts2 = [z[0], np.inf]
-                x2[:, 0] = z[0]
-                x2[1, 1] = np.inf
-            else:
-                #Ordinary semicircle geodesic
-                endpts2 = [z[i-1], z[i]]
-                x2[:, 0] = endpts2
-            res = intersectArcs(endpts1, endpts2, x1, x2)
-            assert(res)
-            xint = np.array([res[0], res[1]])
-            x1 = np.zeros((2, 2))
-            x2 = np.zeros((2, 2))
-            if i == 0 or (i > 0 and (rs[i-1] > rs[i])):
-                #Bisector arcs to the right
-                x1[0, 0] = endpts1[1]
-            else:
-                x1[0, 0] = endpts1[0]
-            x1[1, :] = xint
-            if np.isinf(endpts1[1]):
-                x1[0, 1] = np.inf
-            x2[0, :] = xint
-            x2[1, 0] = z[i]
-            region += [(endpts1, x1), (endpts2, x2)]
-
-
-            #Now intersect the geodesic from i to i+1 with the bisector
-            #(i, i+1)
-            endpts2 = [PL[i, (i+1)], PR[i, i+1]]
-            x1 = np.zeros((2, 2))
-            x2 = np.zeros((2, 2))
-            if np.isinf(endpts2[1]):
-                x2[:, 0] = endpts1[0]
-                x2[1, 1] = np.inf
-            else:
-                x2[:, 0] = endpts2
-            if i == N-1:
-                #Vertical halfline line boundary geodesic on right
-                endpts1 = [z[i], np.inf]
-                x1[:, 0] = z[i]
+                endpts1 = [z[0], np.inf]
+                x1[:, 0] = z[0]
                 x1[1, 1] = np.inf
             else:
-                endpts1 = [z[i], z[i+1]]
+                #Ordinary semicircle geodesic
+                endpts1 = [z[i-1], z[i]]
                 x1[:, 0] = endpts1
-            res = intersectArcs(endpts1, endpts2, x1, x2)
-            assert(res)
-            xint = np.array([res[0], res[1]])
-            x1 = np.zeros((2, 2))
+            #Arc (i, i+1)
+            endpts2 = np.zeros(2)
             x2 = np.zeros((2, 2))
-            if i < N-1 and rs[i] > rs[i+1]:
-                #Geodesic arcs to the right
-                x2[1, 0] = endpts2[1]
-            else:
-                x2[1, 0] = endpts2[0]
-            x2[0, :] = xint
-            if np.isinf(endpts2[1]):
+            if i == N-1:
+                #Vertical halfline line boundary geodesic on right
+                endpts2 = [z[i], np.inf]
+                x2[:, 0] = z[i]
                 x2[1, 1] = np.inf
-            x1[0, 0] = z[i]
-            x1[1, :] = xint
-            region += [(endpts1, x1), (endpts2, x2)]
+            else:
+                endpts2 = [z[i], z[i+1]]
+                x2[:, 0] = endpts2
+            #region will consist of a list of tuples 
+            #   (circle x endpoints, arc 2x2 matrix endpoints)
+            region = [(endpts1, x1), (endpts2, x2)]
+
+            #Step 2: Go through bisectors one by one and narrow down region
+            for j in range(N+1):
+                if j == i:
+                    continue
+                #Setup the current bisector
+                endptsbis = [PL[i, j], PR[i, j]]
+                xbis = np.zeros((2, 2))
+
+                if rs[i-1] > rs[i]:
+                    #Bisector arcs to the right
+                    x1[0, 0] = endpts1[1]
+                else:
+                    x1[0, 0] = endpts1[0]
+
+                #Compare with all existing arcs in CCW order
+                intersections = []
+                for (arcnum, (endpts, x)) in enumerate(region):
+                    res = intersectArcs(endptsbis, endpts, xbis, x)
+                    if res:
+                        
+
+            
             regions.append(region)
         return regions
             
@@ -262,9 +248,9 @@ class HypMergeTree(object):
 if __name__ == '__main__':
     HMT = HypMergeTree()
     HMT.z = np.array([0, 1, 2, 4, 7])
-    np.random.seed(2)
-    HMT.radii = np.array([0.5, 0.6, 0.5, 0.6, 1.5, 3.0])
-    #HMT.radii = np.random.rand(6)
+    HMT.radii = np.array([0.7, 0.6, 0.5, 0.6, 0.45, 2.0])
+    #HMT.z = np.array([0, 1, 2])
+    #HMT.radii = np.array([0.5, 0.25, 0.5, 2])
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
