@@ -186,23 +186,29 @@ class HypMergeTree(object):
             #Start with the bisector (i-1, i) intersecting the 
             #geodesic from i-1 to i
             end1 = [PL[i, i-1], PR[i, i-1]]
-            if i == 0:
-                #Vertical halfline line boundary geodesic on left
-                end2 = [z[0], np.inf]
-            else:
-                #Ordinary semicircle geodesic
-                end2 = [z[i-1], z[i]]
             x1 = np.zeros((2, 2))
             x1[:, 0] = end1
             x2 = np.zeros((2, 2))
-            x2[:, 0] = end2
+            if i == 0:
+                #Vertical halfline line boundary geodesic on left
+                end2 = [z[0], np.inf]
+                x2[:, 0] = z[0]
+                x2[1, 1] = np.inf
+            else:
+                #Ordinary semicircle geodesic
+                end2 = [z[i-1], z[i]]
+                x2[:, 0] = end2
             res = intersectArcs(end1, end2, x1, x2)
             if res:
                 xint = np.array([res[0], res[1]])
                 x1 = np.zeros((2, 2))
-                x1[0, :] = end1
-                x1[1, :] = xint
                 x2 = np.zeros((2, 2))
+                if i == 0 or (i > 0 and (rs[i-1] > rs[i])):
+                    #Bisector arcs to the right
+                    x1[0, 0] = end1[1]
+                else:
+                    x1[0, 0] = end1[0]
+                x1[1, :] = xint
                 x2[0, :] = xint
                 x2[1, 0] = z[i]
                 region += [(end1, x1), (end2, x2)]
@@ -217,25 +223,31 @@ class HypMergeTree(object):
 
             #Now intersect the geodesic from i to i+1 with the bisector
             #(i, i+1)
+            end2 = [PL[i, (i+1)], PR[i, i+1]]
+            x1 = np.zeros((2, 2))
+            x2 = np.zeros((2, 2))
+            x2[:, 0] = end2
             if i == N-1:
                 #Vertical halfline line boundary geodesic on right
                 end1 = [z[i], np.inf]
+                x1[:, 0] = z[i]
+                x1[1, 1] = np.inf
             else:
                 end1 = [z[i], z[i+1]]
-            end2 = [PL[i, (i+1)], PR[i, i+1]]
-            x1 = np.zeros((2, 2))
-            x1[:, 0] = end1
-            x2 = np.zeros((2, 2))
-            x2[:, 0] = end2
+                x1[:, 0] = end1
             res = intersectArcs(end1, end2, x1, x2)
             if res:
                 xint = np.array([res[0], res[1]])
                 x1 = np.zeros((2, 2))
+                x2 = np.zeros((2, 2))
+                if i == N-1 or (i < N-1 and rs[i] > rs[i+1]):
+                    #Geodesic arcs to the right
+                    x2[1, 0] = end2[1]
+                else:
+                    x2[1, 0] = end2[0]
+                x2[0, :] = xint
                 x1[0, 0] = z[i]
                 x1[1, :] = xint
-                x2 = np.zeros((2, 2))
-                x2[0, :] = xint
-                x2[1, :] = end2
                 region += [(end1, x1), (end2, x2)]
             else:
                 #This is the case of two vertical lines; take the left one
