@@ -1,6 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+def equalsEps(x1, y1, x2, y2, eps = 1e-11):
+    if np.abs(x1 - x2) < eps or np.abs(y1 - y2) < eps:
+        return True
+    return False
+
 def acoscrop(arg):
     if arg < -1:
         return np.pi
@@ -12,6 +17,7 @@ def intersectLineArc(line, circle, ysline, xsarc, doPlot = False):
     ysline = np.sort(ysline)
     [a, b] = circle
     r = (b-a)/2.0
+    xsarc = np.sort(xsarc)
     if doPlot:
         theta1 = acoscrop((xsarc[0]-(a+r))/r)
         theta2 = acoscrop((xsarc[1]-(a+r))/r)
@@ -63,7 +69,9 @@ def intersectArcs(end1, end2, x1, x2, doPlot = False):
     r2 = (d-c)/2.0
     y = None
     x = (r1**2-r2**2-(r1+a)**2+(r2+c)**2)/(2*(r2+c-r1-a))
-    if x >= x1[0, 0] and x <= x1[1, 0] and x >= x2[0, 0] and x <= x2[1, 0]:
+    x1bound = [np.min(x1[:, 0]), np.max(x1[:, 0])]
+    x2bound = [np.min(x2[:, 0]), np.max(x2[:, 0])]
+    if x >= x1bound[0] and x <= x1bound[1] and x >= x2bound[0] and x <= x2bound[1]:
         y = np.sqrt(r2**2-(x-(c+r2))**2)
     if doPlot:
         theta1 = acoscrop((x1[0, 0]-(a+r1))/r1)
