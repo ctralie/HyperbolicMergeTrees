@@ -98,7 +98,9 @@ class HypMergeTree(object):
             for i in range(N-1):
                 r = (z[i+1] - z[i])/2.0
                 plt.plot(r*XSemi[:, 0] + z[i] + r, r*XSemi[:, 1], 'k')
-        plt.axis('equal')
+        #plt.axis('equal')
+        plt.xlim(xlims)
+        plt.ylim(ylims)
         return {'xlims':xlims, 'ylims':ylims}
     
     def renderVoronoiRegionsOneByOne(self, fileprefix, drawText = False):
@@ -111,14 +113,14 @@ class HypMergeTree(object):
             [xlims, ylims] = [res['xlims'], res['ylims']]
             xs = []
             ys = []
-            for (arcnum, (circle, arc)) in enumerate(regions[i]):
+            for (arcnum, (circle, arc, idxbis)) in enumerate(regions[i]):
                 arc = np.array(arc)
                 arc[:, 1] = np.minimum(arc[:, 1], ylims[1])
                 plt.scatter(arc[:, 0], arc[:, 1], 20, color=c['color'])
                 if drawText:
                     if arcnum == 0:
                         plt.text(arc[0, 0], arc[0, 1], "%i_0"%arcnum)
-                    plt.text(arc[1, 0]+0.2, arc[1, 1]+0.2, "%i_1"%arcnum)
+                    plt.text(arc[1, 0], arc[1, 1], "%i_1"%arcnum)
                 if arc[0, 0] == arc[1, 0]:
                     #Vertical line
                     xs += arc[:, 0].tolist()
@@ -216,11 +218,21 @@ class HypMergeTree(object):
                 endpts2 = [z[i], z[i+1]]
                 x2[:, 0] = endpts2
             #region will consist of a list of tuples 
-            #   (circle x endpoints, arc 2x2 matrix endpoints)
-            region = [(endpts1, x1), (endpts2, x2)]
+            #   (circle x endpoints, 
+            #   arc 2x2 matrix endpoints, 
+            #   set([index 1, index 2 of points between which bisector is formed]))
+            region = [(endpts1, x1, set([-1, i])), (endpts2, x2, set([-2, i]))]
 
             #Step 2: Go through bisectors one by one and narrow down region
-            for j in range(N+1):
+            #Start with the bisectors directly to the left and right of the point
+            #to ensure the region is closed after 2 steps (1 point intersection
+            # should happen at most once)
+            (i1, i2) = [(i-1)%(N+1), i+1]
+            idxs = np.arange(N+1).tolist()
+            [idxs[0], idxs[i1]] = [idxs[i1], idxs[0]]
+            [idxs[1], idxs[i2]] = [idxs[i2], idxs[1]]
+            idxs[2::] = sorted(idxs[2::])
+            for j in idxs[0:2]:
                 if j == i:
                     continue
                 #Setup the current bisector
@@ -234,9 +246,7 @@ class HypMergeTree(object):
 
                 #Compare with all existing arcs in CCW order
                 intersections = []
-                for (arcnum, (endpts, x)) in enumerate(region):
-                    #print("Intersect %s with %s"%(endptsbis, endpts))
-                    #print("%s\n%s"%(xbis, x))
+                for (arcnum, (endpts, x, idxsbis)) in enumerate(region):
                     res = intersectArcs(endptsbis, endpts, xbis, x)
                     if res:
                         intersections.append((arcnum, np.array([res[0], res[1]])))
@@ -245,43 +255,40 @@ class HypMergeTree(object):
                     (i1, xint1) = intersections[0]
                     #Figure out if arcing left or right to determine endpoints
                     #of the new arc
-                    x = np.zeros((2, 2))
-                    x[0, :] = xint1
-                    if endptsbis[0] < xint1[0] or np.isinf(endptsbis[1]):
-                        #Arcing right or vertical
-                        x[1, 0] = endptsbis[1]
-                    else:
-                        #Arcing left
-                        x[1, 0] = endptsbis[0]
-                    if i == 1:
-                        print(x)
-                    #If z[i] is to the right of the intersection point, march right
-                    #otherwise, march left
-                    if z[i] > xint1[0]:
-                        x = np.flipud(x)
-                        region[i1][1][0, :] = xint1
-                        region = [(endptsbis, x)] + region[i1::]
-                    else:
-                        region[i1][1][1, :] = xint1
-                        region = region[0:i1+1] + [(endptsbis, x)]
-                        
+                    
                 elif len(intersections) == 2:
                     print("2 intersections for region %i bisector %i"%(i, j))
                     [(i1, xint1), (i2, xint2)] = intersections
-                    if xint1[0] < xint2[0]:
-                        [(i2, xint2), (i1, xint1)] = [(i1, xint1), (i2, xint2)]
-                    x = np.array([xint1, xint2]) #The endpoints of the new arc
-                    #Now update the 2 arcs that it intersected
-                    region[i1][1][1, :] = xint1
-                    region[i2][1][0, :] = xint2
-                    #Delete all of the arcs in between
-                    newregion = []
-                    k = i2
-                    while not (k == i1):
-                        newregion.append(region[k])
+                    #Figure out which way to march
+                    k = i1
+                    zInMiddle = False
+                    while not (k == i2):
+                        x = region[k][1]
+                        if  (x[0, 0] == z[i] and x[0, 1] == 0) or \
+                            (x[1, 0] == z[i] and x[1, 1] == 0):
+                            zInMiddle = True
+                            break
                         k = (k+1)%len(region)
-                    newregion += [region[i1], (endptsbis, x)]
-                    region = newregion
+                    if not zInMiddle:
+                        [(i2, xint2), (i1, xint1)] = intersections
+                    #Update the two arcs which were intersected
+                    region[i1][1][0, :] = xint1
+                    region[i1][1][1, :] = region[(i1+1)%len(region)][1][0, :]
+                    region[i2][1][1, :] = xint2
+                    region[i2][1][0, :] = region[(i2-1)][1][1, :]
+                    #Insert the new arc into the list
+                    newregion = []
+                    k = i1
+                    while True:
+                        newregion.append(region[k])
+                        if k == i2:
+                            break
+                        k = (k+1)%len(region)
+                    x = np.zeros((2, 2))
+                    x[0, :] = xint2
+                    x[1, :] = xint1
+                    region = newregion + [(endptsbis, x, set([i, j]))]
+
                 elif len(intersections) > 2:
                     print("Warning: More than 2 intersections for region %i bisector %i"%(i, j))
             regions.append(region)
@@ -292,13 +299,13 @@ class HypMergeTree(object):
 if __name__ == '__main__':
     HMT = HypMergeTree()
     HMT.z = np.array([0, 1, 2, 4, 7])
-    HMT.radii = np.array([0.7, 0.6, 0.5, 0.6, 0.45, 2.0])
+    HMT.radii = np.array([0.7, 0.6, 0.5, 0.55, 0.45, 2.0])
     #HMT.z = np.array([0, 1, 2])
     #HMT.radii = np.array([0.5, 0.25, 0.5, 2])
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
-    HMT.renderVoronoiRegionsOneByOne(s, drawText = False)
+    HMT.renderVoronoiRegionsOneByOne(s, drawText = True)
     s += ".svg"
     plt.clf()
     HMT.render()
