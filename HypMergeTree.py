@@ -32,7 +32,7 @@ class HypMergeTree(object):
         self.z = np.array([])
         self.radii = np.array([])
     
-    def render(self, plotVertices = True, plotBoundary = True, plotBisectors = True, drawOnly = []):
+    def render(self, plotVertices = True, plotBoundary = True, plotVedges = True, drawOnly = []):
         z = self.z
         N = len(z)
         xlims = [-0.2*(z[-1]), 1.2*z[-1]]
@@ -47,11 +47,12 @@ class HypMergeTree(object):
                 plt.scatter(z[i], [0], 40, color = c['color'])
         
         #Setup circle points
-        t = np.linspace(0, 2*np.pi, 100)
+        NCircPts = 500
+        t = np.linspace(0, 2*np.pi, NCircPts)
         XCirc = np.zeros((len(t), 2))
         XCirc[:, 0] = np.cos(t)
         XCirc[:, 1] = np.sin(t)
-        t = np.linspace(0, np.pi, 50)
+        t = np.linspace(0, np.pi, NCircPts/2)
         XSemi = np.zeros((len(t), 2))
         XSemi[:, 0] = np.cos(t)
         XSemi[:, 1] = np.sin(t)
@@ -64,9 +65,9 @@ class HypMergeTree(object):
         for i in range(N):
             plt.plot(rs[i]*XCirc[:, 0] + z[i], rs[i]*XCirc[:, 1]+rs[i], 'gray')
         
-        #Plot bisectors
-        if plotBisectors:
-            (PL, PR) = self.getBisectorPoints()
+        #Plot vedges
+        if plotVedges:
+            (PL, PR) = self.getVedgePoints()
             for i, c in zip(range(N), color_cycle()):
                 for j in [N] + np.arange(N).tolist():
                     if i == j:
@@ -113,14 +114,14 @@ class HypMergeTree(object):
             [xlims, ylims] = [res['xlims'], res['ylims']]
             xs = []
             ys = []
-            for (arcnum, (circle, arc, idxbis)) in enumerate(regions[i]):
+            for (arcnum, (circle, arc, idxvedge)) in enumerate(regions[i]):
                 arc = np.array(arc)
                 arc[:, 1] = np.minimum(arc[:, 1], ylims[1])
                 plt.scatter(arc[:, 0], arc[:, 1], 20, color=c['color'])
                 if drawText:
-                    if arcnum == 0:
-                        plt.text(arc[0, 0], arc[0, 1], "%i_0"%arcnum)
-                    plt.text(arc[1, 0], arc[1, 1], "%i_1"%arcnum)
+                    #if arcnum == 0:
+                    plt.text(arc[0, 0]+0.1, arc[0, 1]+0.1, "%i_0"%arcnum)
+                    plt.text(arc[1, 0], arc[1, 1], "%i_1"%arcnum, color = 'r')
                 if arc[0, 0] == arc[1, 0]:
                     #Vertical line
                     xs += arc[:, 0].tolist()
@@ -138,12 +139,7 @@ class HypMergeTree(object):
             plt.savefig("%s_%i.svg"%(fileprefix, i), bbox_inches = 'tight')
 
 
-    def setEqualLengthArcs(self, rInfty = None):
-        if self.radii.size > 0:
-            return self.radii
-        if not rInfty:
-            print("Error: Horocycle radii were not specified in advance")
-            return None
+    def setEqualLengthArcs(self, rInfty):
         z = np.array(self.z, dtype = np.float64)
         rInfty = 1.0*rInfty
         if len(z) < 2:
@@ -152,13 +148,13 @@ class HypMergeTree(object):
         N = len(self.z)
         rs = np.zeros(N+1)
         rs[-1] = rInfty
-        rs[0] = z[-1]/(2.0*rInfty) #r_{-1} in Francis's notes
-        rs[-2] = z[-1]*(z[-1] - z[-2])/(2.0*rInfty) #r_n
-        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(2.0*rInfty*(z[2::]-z[0:-2])) #r_k
+        rs[0] = z[-1]/rInfty #r_{-1} in Francis's notes
+        rs[-2] = z[-1]*(z[-1] - z[-2])/rInfty #r_n
+        rs[1:-2] = z[-1]*(z[1:-1]-z[0:-2])*(z[2::]-z[1:-1])/(rInfty*(z[2::]-z[0:-2])) #r_k
         self.radii = rs
         return rs
 
-    def getBisectorPoints(self):
+    def getVedgePoints(self):
         z = self.z
         rs = self.radii
         rsSqrt = np.sqrt(rs)
@@ -166,11 +162,11 @@ class HypMergeTree(object):
         #Right and left points on horizontal circle diameter
         PL = np.inf*np.ones((N+1, N+1))
         PR = np.inf*np.ones((N+1, N+1))
-        #First fill in the bisectors between H_{\infty} and H_k
+        #First fill in the vedge between H_{\infty} and H_k
         rprime = np.sqrt(2)*rsSqrt[0:-1]*rsSqrt[-1]
         PL[0:-1, N] = z - rprime
         PR[0:-1, N] = z + rprime
-        #Now fill in the bisectors between all other points
+        #Now fill in the vedges between all other points
         for i1 in range(N):
             d = rsSqrt[i1]
             for i2 in range(i1+1, N):
@@ -185,22 +181,29 @@ class HypMergeTree(object):
         PR = np.minimum(PR, PR.T)
         return (PL, PR)
     
-    def getVoronoiDiagram(self):
+    def getInternalVoronoiVertices(self):
+        #An O(N^4) algorithm for internal vertices
         z = self.z
         rs = self.radii
-        (PL, PR) = self.getBisectorPoints()
+        (PL, PR) = self.getVedgePoints()
         N = len(z)
-        #For each vertex i, maintain a list of arcs in CCW order
+        #Setup all regions for each vertex
         regions = []
-        for i in range(N):
+        vedges = {}
+        for i in range(N+1):
             #Step 1: Start with the boundary arcs (i-1, i) and (i, i+1)
             #Arc (i-1, i)
             endpts1 = np.zeros(2)
             x1 = np.zeros((2, 2))
             if i == 0:
-                #Vertical halfline line boundary geodesic on left
+                #Vertical halfline boundary geodesic on left
                 endpts1 = [z[0], np.inf]
                 x1[:, 0] = z[0]
+                x1[0, 1] = np.inf
+            elif i == N:
+                #Vertical halfline boundary geodesic on right
+                endpts1 = [z[-1], np.inf]
+                x1[:, 0] = z[-1]
                 x1[0, 1] = np.inf
             else:
                 #Ordinary semicircle geodesic
@@ -210,103 +213,81 @@ class HypMergeTree(object):
             endpts2 = np.zeros(2)
             x2 = np.zeros((2, 2))
             if i == N-1:
-                #Vertical halfline line boundary geodesic on right
+                #Vertical halfline boundary geodesic on right
                 endpts2 = [z[i], np.inf]
                 x2[:, 0] = z[i]
                 x2[1, 1] = np.inf
+            elif i == N:
+                #Vertical halfline boundary geodesic on left
+                endpts2 = [z[0], np.inf]
+                x2[:, 0] = z[0]
+                x2[0, 1] = np.inf
             else:
+                #Ordinary semicircle geodesic
                 endpts2 = [z[i], z[i+1]]
                 x2[:, 0] = endpts2
             #region will consist of a list of tuples 
             #   (circle x endpoints, 
             #   arc 2x2 matrix endpoints, 
-            #   set([index 1, index 2 of points between which bisector is formed]))
+            #   set([index 1, index 2 of points between which vedge is formed]))
             region = [(endpts1, x1, set([-1, i])), (endpts2, x2, set([-2, i]))]
 
-            #Step 2: Go through bisectors one by one and narrow down region
-            #Start with the bisectors directly to the left and right of the point
-            #to ensure the region is closed after 2 steps (1 point intersection
-            # should happen at most once)
-            (i1, i2) = [(i-1)%(N+1), i+1]
-            idxs = np.arange(N+1).tolist()
-            [idxs[0], idxs[i1]] = [idxs[i1], idxs[0]]
-            [idxs[1], idxs[i2]] = [idxs[i2], idxs[1]]
-            idxs[2::] = sorted(idxs[2::])
-            for j in idxs[0:2]:
-                if j == i:
+            #Step 2: Add all vedges between this vertex and all other vertices
+            for j in range(N+1):
+                if i == j:
                     continue
-                #Setup the current bisector
-                endptsbis = [PL[i, j], PR[i, j]]
-                xbis = np.zeros((2, 2))
-                if np.isinf(endptsbis[1]):
-                    xbis[:, 0] = endptsbis[0]
-                    xbis[1, 1] = np.inf
+                #Setup the current vedge
+                endpts = [PL[i, j], PR[i, j]]
+                x = np.zeros((2, 2))
+                if np.isinf(endpts[1]):
+                    x[:, 0] = endpts[0]
+                    x[1, 1] = np.inf
                 else:
-                    xbis[:, 0] = endptsbis
-
-                #Compare with all existing arcs in CCW order
-                intersections = []
-                for (arcnum, (endpts, x, idxsbis)) in enumerate(region):
-                    res = intersectArcs(endptsbis, endpts, xbis, x)
-                    if res:
-                        intersections.append((arcnum, np.array([res[0], res[1]])))
-                if len(intersections) == 1:
-                    print("1 intersection for region %i bisector %i"%(i, j))
-                    (i1, xint1) = intersections[0]
-                    #Figure out if arcing left or right to determine endpoints
-                    #of the new arc
-                    
-                elif len(intersections) == 2:
-                    print("2 intersections for region %i bisector %i"%(i, j))
-                    [(i1, xint1), (i2, xint2)] = intersections
-                    #Figure out which way to march
-                    k = i1
-                    zInMiddle = False
-                    while not (k == i2):
-                        x = region[k][1]
-                        if  (x[0, 0] == z[i] and x[0, 1] == 0) or \
-                            (x[1, 0] == z[i] and x[1, 1] == 0):
-                            zInMiddle = True
-                            break
-                        k = (k+1)%len(region)
-                    if not zInMiddle:
-                        [(i2, xint2), (i1, xint1)] = intersections
-                    #Update the two arcs which were intersected
-                    region[i1][1][0, :] = xint1
-                    region[i1][1][1, :] = region[(i1+1)%len(region)][1][0, :]
-                    region[i2][1][1, :] = xint2
-                    region[i2][1][0, :] = region[(i2-1)][1][1, :]
-                    #Insert the new arc into the list
-                    newregion = []
-                    k = i1
-                    while True:
-                        newregion.append(region[k])
-                        if k == i2:
-                            break
-                        k = (k+1)%len(region)
-                    x = np.zeros((2, 2))
-                    x[0, :] = xint2
-                    x[1, :] = xint1
-                    region = newregion + [(endptsbis, x, set([i, j]))]
-
-                elif len(intersections) > 2:
-                    print("Warning: More than 2 intersections for region %i bisector %i"%(i, j))
+                    x[:, 0] = endpts
+                vedges[(i, j)] = (endpts, x, set([i, j]))
+                region += [vedges[(i, j)]]
             regions.append(region)
-        return regions
-            
+        
+        #Check all triple wise intersections
+        TripleVertices = []
+        for i in range(N+1):
+            for j in range(i+1, N+1):
+                for k in range(j+1, N+1):
+                    (end1, x1, set1) = vedges[(i, j)]
+                    (end2, x2, set2) = vedges[(j, k)]
+                    p = intersectArcs(end1, end2, x1, x2)
+                    if not p:
+                        continue
+                    #Now make sure that the point is in every region
+                    ini = pointInRegion(regions[i], z, i, p)
+                    inj = pointInRegion(regions[j], z, j, p)
+                    inz = pointInRegion(regions[k], z, k, p)
+                    TripleVertices.append({'triple':(i, j, k), \
+                                        'ins':(ini, inj, inz), 'p':p})
+        return {'TripleVertices':TripleVertices, 'vedges':vedges}
 
 
 if __name__ == '__main__':
     HMT = HypMergeTree()
     HMT.z = np.array([0, 1, 2, 4, 7])
-    HMT.radii = np.array([0.7, 0.6, 0.5, 0.55, 0.45, 2.0])
+    #HMT.radii = np.array([0.7, 0.6, 0.5, 0.55, 0.45, 2.0])
+    HMT.radii = np.array([0.3, 0.4, 0.3, 0.55, 0.45, 3.0])
     #HMT.z = np.array([0, 1, 2])
     #HMT.radii = np.array([0.5, 0.25, 0.5, 2])
     s = "0"
     for z in HMT.z[1::]:
         s += "_%g"%z
-    HMT.renderVoronoiRegionsOneByOne(s, drawText = True)
-    s += ".svg"
-    plt.clf()
+    plt.title("%s, %s"%(HMT.z, HMT.radii))
+    res = HMT.getInternalVoronoiVertices()
     HMT.render()
-    plt.savefig(s, bbox_inches = 'tight')
+    for i, V in enumerate(res['TripleVertices']):
+        [triple, ins, p] = [V['triple'], V['ins'], V['p']]
+        if ins[0] and ins[1] and ins[2]:
+            plt.scatter(p[0], p[1], 40, 'r', zorder=100)
+        else:
+            plt.scatter(p[0], p[1], 20, 'k', zorder=100)
+        ts = ""
+        for k in range(3):
+            ts += "%i (%s) "%(triple[k], ins[k])
+        #plt.title(ts)
+    plt.savefig("%s.svg"%(s), bbox_inches = 'tight')

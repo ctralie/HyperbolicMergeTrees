@@ -42,8 +42,7 @@ def intersectArcs(end1, end2, x1, x2, doPlot = False):
                 the first arc
     :param end2: A 2 element list of endpoints for the semicircle containing\
                 the second arc
-    :param x1: A 2x2 matrix, where each row is x, y of an endpoint of arc 1\
-                in CCW order
+    :param x1: A 2x2 matrix, where each row is x, y of an endpoint of arc 1
     :param x2: A 2x2 matrix, where each row is x, y of an endpoint of arc 2
     :returns: (x, y) tuple of solution if it exists, or None otherwise 
     """
@@ -92,6 +91,55 @@ def intersectArcs(end1, end2, x1, x2, doPlot = False):
         return (x, y)
     return None
 
+def pointInRegion(region, z, cidx, p, eps = 1e-7):
+    """
+    Return true if a point *p* is in a region around a point *c*
+    :param region: A list of tuples 
+        (circle x endpoints, 
+        arc 2x2 matrix endpoints, 
+        set([index 1, index 2 of points between which bisector is formed]))
+    :param z: Locations of all points
+    :param cidx: Index of the point at the center of this region
+    :param p: 2D array of point to test
+    :param eps: Some tolerance for numerical precision
+    """
+    for ([e1, e2], x, idxs) in region:
+        if (-1 in idxs or -2 in idxs):
+            if np.isinf(e2):
+                if e1 == 0 and p[0] < z[0] + eps: #Left vertical boundary
+                    return False
+                if e1 > 0 and p[0] > e1 - eps: #Right vertical boundary
+                    return False
+            else:
+                #Point should be above the arcs on the boundary
+                cx = 0.5*(e1+e2)
+                rSqr = (e2-cx)**2
+                #print("idxs = ", idxs, ", cx = ", cx, ", e2 = ", e2, ", rSqr = ", rSqr)
+                if (p[0]-cx)**2 + p[1]**2 < rSqr + eps:
+                    return False
+        elif np.isinf(e2):
+            #Vertical line
+            s11 = np.sign(e1-p[0]-eps)
+            s12 = np.sign(e1-p[0]+eps)
+            s2 = np.sign(e1-z[cidx])
+            if not(s11 == s2) and not (s12 == s2):
+                return False #Points not on same side
+        else:
+            #Arc: Point needs to lie on the correct side
+            c = np.inf
+            if cidx < len(z):
+                c = z[cidx]
+            cx = 0.5*(e1+e2)
+            rSqr = (e2-cx)**2
+            d1 = (p[0]-cx)**2 + p[1]**2 - rSqr
+            d2 = (c-cx)**2 - rSqr
+            s11 = np.sign(d1-eps)
+            s12 = np.sign(d1+eps)
+            s2 = np.sign(d2)
+            if not(s11 == s2) and not (s12 == s2):
+                return False #Points not on same side
+    return True
+
 def testArcIntersection():
     for i in range(400):
         end1 = np.sort(np.random.randn(2))
@@ -114,5 +162,45 @@ def testLineArcIntersection():
         intersectLineArc(line, circle, ysline, xsarc, doPlot = True)
         plt.savefig("%i.svg"%i, bbox_inches = 'tight')
 
+def testPointInRegion():
+    region = [[[0, 1], None, set([-1, 0])]]
+    region.append([[1, 3], None, set([-2, 0])])
+    region.append([[0, np.inf], None, set([0, 1])])
+    region.append([[2.4, 5.5], None, set([0, 2])])
+    region.append([[-2, 5.5], None, set([0, 3])])
+
+    PX, PY = np.meshgrid(np.linspace(-3, 6, 100), np.linspace(0, 5, 100))
+    PX = PX.flatten()
+    PY = PY.flatten()
+    PsInside = []
+    PsOutside = []
+    for i in range(PX.size):
+        p = np.array([PX[i], PY[i]])
+        if pointInRegion(region, 1, p):
+            PsInside.append(p)
+        else:
+            PsOutside.append(p)
+    PsInside = np.array(PsInside)
+    PsOutside = np.array(PsOutside)
+
+    ymax = 10
+    t = np.linspace(0, np.pi, 100)
+    xcirc = np.zeros((len(t), 2))
+    xcirc[:, 0] = np.cos(t)
+    xcirc[:, 1] = np.sin(t)
+    for r in region:
+        [x1, x2] = r[0]
+        if np.isinf(x2):
+            plt.plot([0, 0], [0, ymax], 'k')
+        else:
+            cx = 0.5*(x1+x2)
+            r = x2 - cx
+            plt.plot(r*xcirc[:, 0]+r+x1, r*xcirc[:, 1])
+    plt.scatter(PsInside[:, 0], PsInside[:, 1], 20, 'y')
+    plt.scatter(PsOutside[:, 0], PsOutside[:, 1], 20, 'g')
+    plt.axis('equal')
+    plt.show()
+
 if __name__ == '__main__':
-    testArcIntersection()
+    #testArcIntersection()
+    testPointInRegion()
