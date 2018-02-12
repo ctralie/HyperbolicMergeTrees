@@ -1,5 +1,6 @@
 import numpy as np 
 import matplotlib.pyplot as plt
+import itertools
 from GeomTools import *
 
 def getPointsNumDenom(a, b, c, d):
@@ -31,6 +32,12 @@ class HypMergeTree(object):
         #By convention, vertex at infinity is indexed by length(z)
         self.z = np.array([])
         self.radii = np.array([])
+        
+        #Voronoi diagram structures
+        self.Ps = None
+        self.vedges = None
+        self.Ps2P_Vedge = None
+        self.refreshNeeded = True #Whether Voronoi structure needs to be refreshed
     
     def render(self, plotVertices = True, plotBoundary = True, plotVedges = True, drawOnly = []):
         z = self.z
@@ -86,7 +93,8 @@ class HypMergeTree(object):
                         xs = xl+r+XSemi[:, 0]*r
                         ys = r*XSemi[:, 1]
                     idx = np.arange(len(xs))
-                    idx = idx[(xs >= 0)*(xs <= z[-1])*(ys<=ylims[-1])]
+                    #idx = idx[(xs >= 0)*(xs <= z[-1])*(ys<=ylims[-1])]
+                    idx = idx[ys<=ylims[-1]]
                     if j == N:
                         plt.plot(xs[idx], ys[idx], color = c['color'], linestyle = ':', linewidth = 3)
                     elif i < j:
@@ -99,45 +107,60 @@ class HypMergeTree(object):
             for i in range(N-1):
                 r = (z[i+1] - z[i])/2.0
                 plt.plot(r*XSemi[:, 0] + z[i] + r, r*XSemi[:, 1], 'k')
-        #plt.axis('equal')
-        plt.xlim(xlims)
-        plt.ylim(ylims)
+        plt.axis('equal')
+        #plt.xlim(xlims)
+        #plt.ylim(ylims)
         return {'xlims':xlims, 'ylims':ylims}
     
-    def renderVoronoiRegionsOneByOne(self, fileprefix, drawText = False):
-        regions = self.getVoronoiDiagram()
+    def renderVoronoiDiagram(self, xlims = None, ylims = None, plotLabelNums = False):
+        if not self.Ps or self.refreshNeeded:
+            self.computeVoronoiGraph()
+            self.refreshNeeded = False
+        Ps = self.Ps
+        Ps2P_Vedge = self.Ps2P_Vedge
+        vedges = self.vedges
         N = len(self.z)
+        PsLocs = np.array([p for [p, idxs] in Ps]) 
         color_cycle = plt.rcParams['axes.prop_cycle']
-        for i, c in zip(range(N), color_cycle()):
-            plt.clf()
-            res = self.render(drawOnly = [i])
+        colors = []
+        for c in zip(range(N), color_cycle()):
+            colors.append(c[1]['color'])
+
+        res = self.render(plotVedges = False)
+        if not xlims:
             [xlims, ylims] = [res['xlims'], res['ylims']]
-            xs = []
-            ys = []
-            for (arcnum, (circle, arc, idxvedge)) in enumerate(regions[i]):
-                arc = np.array(arc)
+        #First plot Voronoi points
+        plt.scatter(PsLocs[:, 0], PsLocs[:, 1], 40, 'k', zorder=100)
+        if plotLabelNums:
+            for i in range(PsLocs.shape[0]):
+                plt.text(PsLocs[i, 0]+0.01, PsLocs[i, 1]+0.01, "%s"%i)
+
+        #Now plot voronoi segments
+        for i in range(len(Ps)):
+            for (j, (i1, i2)) in Ps2P_Vedge[i]:
+                if i > j:
+                    continue
+                arc = np.array(PsLocs[[i, j], :])
                 arc[:, 1] = np.minimum(arc[:, 1], ylims[1])
-                plt.scatter(arc[:, 0], arc[:, 1], 20, color=c['color'])
-                if drawText:
-                    #if arcnum == 0:
-                    plt.text(arc[0, 0]+0.1, arc[0, 1]+0.1, "%i_0"%arcnum)
-                    plt.text(arc[1, 0], arc[1, 1], "%i_1"%arcnum, color = 'r')
-                if arc[0, 0] == arc[1, 0]:
+                [a, b] = vedges[(i1, i2)][0]
+                if np.isinf(b):
                     #Vertical line
-                    xs += arc[:, 0].tolist()
-                    ys += arc[:, 1].tolist()
+                    xs = arc[:, 0]
+                    ys = arc[:, 1]
                 else:
-                    [a, b] = circle
                     r = (b-a)/2.0
                     theta1 = acoscrop((arc[0, 0]-(a+r))/r)
                     theta2 = acoscrop((arc[1, 0]-(a+r))/r)
                     t = np.linspace(theta1, theta2, 100)
-                    xs += (a+r+r*np.cos(t)).tolist()
-                    ys += (r*np.sin(t)).tolist()
-                plt.plot(xs, ys, linewidth=2, color=c['color'])
-                #plt.fill(xs, ys, color=c['color'])
-            plt.savefig("%s_%i.svg"%(fileprefix, i), bbox_inches = 'tight')
-
+                    xs = a+r+r*np.cos(t)
+                    ys = r*np.sin(t)
+                if i2 == N:
+                    plt.plot(xs, ys, linewidth=3, color=colors[i1], linestyle=':')
+                else:
+                    plt.plot(xs, ys, linewidth=2, color=colors[i1])
+                    plt.plot(xs, ys, color=colors[i2], linestyle=':')
+        plt.ylim(ylims)
+        plt.axis('equal')
 
     def setEqualLengthArcs(self, rInfty):
         z = np.array(self.z, dtype = np.float64)
@@ -181,8 +204,8 @@ class HypMergeTree(object):
         PR = np.minimum(PR, PR.T)
         return (PL, PR)
     
-    def getInternalVoronoiVertices(self):
-        #An O(N^4) algorithm for internal vertices
+    def getInternalVoronoiVertices(self, clipToPolygon = True):
+        """An O(N^4) algorithm for internal vertices"""
         z = self.z
         rs = self.radii
         (PL, PR) = self.getVedgePoints()
@@ -191,46 +214,48 @@ class HypMergeTree(object):
         regions = []
         vedges = {}
         for i in range(N+1):
-            #Step 1: Start with the boundary arcs (i-1, i) and (i, i+1)
-            #Arc (i-1, i)
-            endpts1 = np.zeros(2)
-            x1 = np.zeros((2, 2))
-            if i == 0:
-                #Vertical halfline boundary geodesic on left
-                endpts1 = [z[0], np.inf]
-                x1[:, 0] = z[0]
-                x1[0, 1] = np.inf
-            elif i == N:
-                #Vertical halfline boundary geodesic on right
-                endpts1 = [z[-1], np.inf]
-                x1[:, 0] = z[-1]
-                x1[0, 1] = np.inf
-            else:
-                #Ordinary semicircle geodesic
-                endpts1 = [z[i-1], z[i]]
-                x1[:, 0] = endpts1
-            #Arc (i, i+1)
-            endpts2 = np.zeros(2)
-            x2 = np.zeros((2, 2))
-            if i == N-1:
-                #Vertical halfline boundary geodesic on right
-                endpts2 = [z[i], np.inf]
-                x2[:, 0] = z[i]
-                x2[1, 1] = np.inf
-            elif i == N:
-                #Vertical halfline boundary geodesic on left
-                endpts2 = [z[0], np.inf]
-                x2[:, 0] = z[0]
-                x2[0, 1] = np.inf
-            else:
-                #Ordinary semicircle geodesic
-                endpts2 = [z[i], z[i+1]]
-                x2[:, 0] = endpts2
-            #region will consist of a list of tuples 
-            #   (circle x endpoints, 
-            #   arc 2x2 matrix endpoints, 
-            #   set([index 1, index 2 of points between which vedge is formed]))
-            region = [(endpts1, x1, set([-1, i])), (endpts2, x2, set([-2, i]))]
+            region = []
+            if clipToPolygon:
+                #Step 1: Start with the boundary arcs (i-1, i) and (i, i+1)
+                #Arc (i-1, i)
+                endpts1 = np.zeros(2)
+                x1 = np.zeros((2, 2))
+                if i == 0:
+                    #Vertical halfline boundary geodesic on left
+                    endpts1 = [z[0], np.inf]
+                    x1[:, 0] = z[0]
+                    x1[0, 1] = np.inf
+                elif i == N:
+                    #Vertical halfline boundary geodesic on right
+                    endpts1 = [z[-1], np.inf]
+                    x1[:, 0] = z[-1]
+                    x1[0, 1] = np.inf
+                else:
+                    #Ordinary semicircle geodesic
+                    endpts1 = [z[i-1], z[i]]
+                    x1[:, 0] = endpts1
+                #Arc (i, i+1)
+                endpts2 = np.zeros(2)
+                x2 = np.zeros((2, 2))
+                if i == N-1:
+                    #Vertical halfline boundary geodesic on right
+                    endpts2 = [z[i], np.inf]
+                    x2[:, 0] = z[i]
+                    x2[1, 1] = np.inf
+                elif i == N:
+                    #Vertical halfline boundary geodesic on left
+                    endpts2 = [z[0], np.inf]
+                    x2[:, 0] = z[0]
+                    x2[0, 1] = np.inf
+                else:
+                    #Ordinary semicircle geodesic
+                    endpts2 = [z[i], z[i+1]]
+                    x2[:, 0] = endpts2
+                #region will consist of a list of tuples 
+                #   (circle x endpoints, 
+                #   arc 2x2 matrix endpoints, 
+                #   set([index 1, index 2 of points between which vedge is formed]))
+                region += [(endpts1, x1, set([-1, i])), (endpts2, x2, set([-2, i]))]
 
             #Step 2: Add all vedges between this vertex and all other vertices
             for j in range(N+1):
@@ -262,32 +287,114 @@ class HypMergeTree(object):
                     ini = pointInRegion(regions[i], z, i, p)
                     inj = pointInRegion(regions[j], z, j, p)
                     inz = pointInRegion(regions[k], z, k, p)
-                    TripleVertices.append({'triple':(i, j, k), \
-                                        'ins':(ini, inj, inz), 'p':p})
-        return {'TripleVertices':TripleVertices, 'vedges':vedges}
+                    TripleVertices.append({'idxs':(i, j, k), \
+                                        'ins':(ini, inj, inz), 'p':np.array(list(p))})
+        
+        #Check all vedge endpoints (terminal points of Voronoi diagram)
+        VedgeEndpts = []
+        for i in range(N+1):
+            for j in range(i+1, N+1):
+                (end, x, setij) = vedges[(i, j)]
+                for k in [0, 1]:
+                    p = x[k, :]
+                    ini = pointInRegion(regions[i], z, i, p)
+                    inj = pointInRegion(regions[j], z, j, p)
+                    VedgeEndpts.append({'idxs':(i, j), 'ins':(ini, inj), 'p':p})
+        
+        return {'TripleVertices':TripleVertices, 'VedgeEndpts':VedgeEndpts, 'vedges':vedges}
+    
+    def computeVoronoiGraph(self, eps = 1e-7):
+        """
+        Compute the horocycle-based Voronoi graph
+        :param eps: A numerical precision tolerance level for merging 
+            close internal Voronoi vertices together
+        :stores {'Ps': An Nx2 array of tuples \
+                        (Voronoi Vertices, involved ideal point indices), \
+                        where incident vedges can be inferred from point indices}, 
+                'Ps2P_Vedge': A dictionary of bi-directional vedge segments \
+                    between Voronoi points: idx -> (idxother, vedge) \
+                'vedges': A dictionary of (i, j) tuples to (endpts, x, set([i, j])) \
+                }
+        """
+        res = self.getInternalVoronoiVertices(clipToPolygon = False)
+        vedges = res['vedges']
+        #Step 1: Come up with a pruned (point, edge) incidence structure
+        #(prune for non-generic cases)
+        Ps = []
+        Vs = []
+        for V in res['TripleVertices'] + res['VedgeEndpts']:
+            [idxs, ins, p1] = [V['idxs'], V['ins'], V['p']]
+            allInside = True
+            for ini in ins:
+                if not ini:
+                    allInside = False
+                    break
+            if not allInside:
+                continue
+            #Check to see if this is numerically close enough
+            #to one of the vertices already there
+            closeToOther = False
+            for i, [p2, edges] in enumerate(Ps):
+                if np.sum((p1-p2)**2) < eps:
+                    closeToOther = True
+                    Ps[i][1].union(set(idxs))
+                    break
+            if not closeToOther:
+                Ps.append([p1, set(idxs)])
+        #Convert (point, set) array into (point, sorted list) array
+        for i in range(len(Ps)):
+            Ps[i][1] = sorted(list(Ps[i][1]))
+        PsLocs = np.array([p for [p, idxs] in Ps]) 
+        
+        #Step 2: Derive vedge-point incidence structures
+        Vedge2Ps = {}
+        for i, (p, idxs) in enumerate(Ps):
+            for (i1, i2) in itertools.combinations(idxs, 2):
+                if not (i1, i2) in Vedge2Ps:
+                    Vedge2Ps[(i1, i2)] = []
+                Vedge2Ps[(i1, i2)].append(i)
+        
+        #Step 3: Sort the points along each vedge
+        (PL, PR) = self.getVedgePoints()
+        Ps2P_Vedge = {}
+        for i in range(len(Ps)):
+            Ps2P_Vedge[i] = []
+        for (i1, i2) in Vedge2Ps:
+            e1 = PL[i1, i2]
+            e2 = PR[i1, i2]
+            idxs = np.array(Vedge2Ps[(i1, i2)])
+            #Compute angles
+            thisPs = PsLocs[idxs, :]
+            if np.isinf(e2):
+                #Vertical line
+                idxs = idxs[np.argsort(thisPs[:, 1])]
+            else:
+                #Points along arc; sort by angle
+                thisPs[:, 0] = thisPs[:, 0] - e1 + (e2-e1)/2.0
+                angles = np.arctan2(thisPs[:, 1], thisPs[:, 0])
+                idxs = idxs[np.argsort(angles)]
+            for i in range(len(idxs)-1):
+                [idx1, idx2] = [idxs[i], idxs[i+1]]
+                Ps2P_Vedge[idx1].append((idx2, (i1, i2)))
+                Ps2P_Vedge[idx2].append((idx1, (i1, i2)))
+        self.Ps = Ps
+        self.Ps2P_Vedge = Ps2P_Vedge
+        self.vedges = vedges
+        return {'Ps':Ps, 'Ps2P_Vedge':Ps2P_Vedge, 'vedges':vedges}
 
+def testQuadConfigurations():
+    HMT = HypMergeTree()
+    HMT.z = np.array([0, 1, 2], dtype = np.float64)
+    HMT.radii = np.array([0.25, 0.15, 0.25, 6.0])
+    for i, z2 in enumerate(np.linspace(1.5, 5, 50)):
+        HMT.z[-1] = z2
+        plt.clf()
+        HMT.refreshNeeded = True
+        HMT.renderVoronoiDiagram()
+        plt.scatter([-2, 7], [1, 1], 20, 'w')
+        plt.axis('equal')
+        plt.title("z2 = %.3g"%z2)
+        plt.savefig("%i.png"%i, bbox_inches = 'tight')
 
 if __name__ == '__main__':
-    HMT = HypMergeTree()
-    HMT.z = np.array([0, 1, 2, 4, 7])
-    #HMT.radii = np.array([0.7, 0.6, 0.5, 0.55, 0.45, 2.0])
-    HMT.radii = np.array([0.3, 0.4, 0.3, 0.55, 0.45, 3.0])
-    #HMT.z = np.array([0, 1, 2])
-    #HMT.radii = np.array([0.5, 0.25, 0.5, 2])
-    s = "0"
-    for z in HMT.z[1::]:
-        s += "_%g"%z
-    plt.title("%s, %s"%(HMT.z, HMT.radii))
-    res = HMT.getInternalVoronoiVertices()
-    HMT.render()
-    for i, V in enumerate(res['TripleVertices']):
-        [triple, ins, p] = [V['triple'], V['ins'], V['p']]
-        if ins[0] and ins[1] and ins[2]:
-            plt.scatter(p[0], p[1], 40, 'r', zorder=100)
-        else:
-            plt.scatter(p[0], p[1], 20, 'k', zorder=100)
-        ts = ""
-        for k in range(3):
-            ts += "%i (%s) "%(triple[k], ins[k])
-        #plt.title(ts)
-    plt.savefig("%s.svg"%(s), bbox_inches = 'tight')
+    testQuadConfigurations()
