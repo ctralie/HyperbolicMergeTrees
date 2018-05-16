@@ -112,9 +112,9 @@ class HypMergeTree(object):
         #plt.ylim(ylims)
         return {'xlims':xlims, 'ylims':ylims}
     
-    def renderVoronoiDiagram(self, xlims = None, ylims = None, plotLabelNums = False):
+    def renderVoronoiDiagram(self, xlims = None, ylims = None, plotLabelNums = False, clipendpts = True):
         if not self.Ps or self.refreshNeeded:
-            self.computeVoronoiGraph()
+            self.computeVoronoiGraph(clipendpts = clipendpts)
             self.refreshNeeded = False
         Ps = self.Ps
         Ps2P_Vedge = self.Ps2P_Vedge
@@ -155,7 +155,7 @@ class HypMergeTree(object):
                     xs = a+r+r*np.cos(t)
                     ys = r*np.sin(t)
                 if i2 == N:
-                    plt.plot(xs, ys, linewidth=3, color=colors[i1], linestyle=':')
+                    plt.plot(xs, ys, linewidth=3, color=colors[i1])
                 else:
                     plt.plot(xs, ys, linewidth=2, color=colors[i1])
                     plt.plot(xs, ys, color=colors[i2], linestyle=':')
@@ -204,7 +204,7 @@ class HypMergeTree(object):
         PR = np.minimum(PR, PR.T)
         return (PL, PR)
     
-    def getInternalVoronoiVertices(self, clipToPolygon = True):
+    def getInternalVoronoiVertices(self, clipToPolygon = True, clipendpts = True):
         """An O(N^4) algorithm for internal vertices"""
         z = self.z
         rs = self.radii
@@ -291,19 +291,35 @@ class HypMergeTree(object):
                                         'ins':(ini, inj, inz), 'p':np.array(list(p))})
         
         #Check all vedge endpoints (terminal points of Voronoi diagram)
+
         VedgeEndpts = []
-        for i in range(N+1):
+        for i in range(N):
             for j in range(i+1, N+1):
                 (end, x, setij) = vedges[(i, j)]
                 for k in [0, 1]:
                     p = x[k, :]
                     ini = pointInRegion(regions[i], z, i, p)
                     inj = pointInRegion(regions[j], z, j, p)
+                    #For the valid terminal vertices, come up with an endpoint
+                    #that's on the boundary of the polygon
+                    if ini and inj and clipendpts:
+                        end2 = [z[i]]
+                        x2 = np.zeros((2, 2))
+                        x2[0, 0] = z[i]
+                        if j < N:
+                            end2.append(z[j])
+                            x2[1, 0] = z[j]
+                        else:
+                            end2.append(np.inf)
+                            x2[1, 0] = z[i]
+                            x2[1, 1] = np.inf
+                        xres, yres = intersectArcs(end, end2, x, x2)
+                        p = np.array([xres, yres])
                     VedgeEndpts.append({'idxs':(i, j), 'ins':(ini, inj), 'p':p})
         
         return {'TripleVertices':TripleVertices, 'VedgeEndpts':VedgeEndpts, 'vedges':vedges}
     
-    def computeVoronoiGraph(self, eps = 1e-7):
+    def computeVoronoiGraph(self, eps = 1e-7, clipendpts = True):
         """
         Compute the horocycle-based Voronoi graph
         :param eps: A numerical precision tolerance level for merging 
@@ -316,13 +332,14 @@ class HypMergeTree(object):
                 'vedges': A dictionary of (i, j) tuples to (endpts, x, set([i, j])) \
                 }
         """
-        res = self.getInternalVoronoiVertices(clipToPolygon = False)
+        res = self.getInternalVoronoiVertices(clipToPolygon = False, clipendpts = clipendpts)
         vedges = res['vedges']
+        VedgeEndpts = res['VedgeEndpts']
+        TripleVertices = res['TripleVertices']
         #Step 1: Come up with a pruned (point, edge) incidence structure
         #(prune for non-generic cases)
         Ps = []
-        Vs = []
-        for V in res['TripleVertices'] + res['VedgeEndpts']:
+        for V in TripleVertices + VedgeEndpts:
             [idxs, ins, p1] = [V['idxs'], V['ins'], V['p']]
             allInside = True
             for ini in ins:
@@ -382,19 +399,52 @@ class HypMergeTree(object):
         self.vedges = vedges
         return {'Ps':Ps, 'Ps2P_Vedge':Ps2P_Vedge, 'vedges':vedges}
 
-def testQuadConfigurations():
+def testEdgeFlip():
     HMT = HypMergeTree()
     HMT.z = np.array([0, 1, 2], dtype = np.float64)
-    HMT.radii = np.array([0.25, 0.15, 0.25, 6.0])
-    for i, z2 in enumerate(np.linspace(1.5, 5, 50)):
+    HMT.radii = np.array([0.25, 0.125, 0.25, 4.0])
+    for i, z2 in enumerate(np.linspace(1.5, 2.5, 50)):
         HMT.z[-1] = z2
         plt.clf()
         HMT.refreshNeeded = True
         HMT.renderVoronoiDiagram()
-        plt.scatter([-2, 7], [1, 1], 20, 'w')
+        plt.scatter([-2, 5], [1, 1], 20, 'w')
         plt.axis('equal')
         plt.title("z2 = %.3g"%z2)
         plt.savefig("%i.png"%i, bbox_inches = 'tight')
 
+def testQuadWeights(NSamples = 200):
+    w1, w2, w4, w5 = 0.2, 2.0, 1.0, 1.0
+    z1 = 1.0
+    getz2 = lambda w1, w2, w3, w4, w5: z1*(w2+w3+w5)/(w1+w3+w4)
+    #First do branch on right
+    HMT = HypMergeTree()
+    framenum = 0
+    for w3 in 1.0-np.linspace(0, 1, NSamples):
+        z2 = getz2(w1, w2, w3, w4, w5)
+        print("z2 = %g"%z2)
+        rinf = (z1+z2)/(w1+w3+w5)
+        r0 = z1*(w1+w2)
+        r1 = (w2+w3+w4)/(z1*z2)/(z1+z2)
+        r2 = z2*(w4+w5)
+        HMT.z = np.array([0, z1, z1+z2], dtype = np.float64)
+        HMT.radii = np.array([r0, r1, r2, 0.5*rinf])
+        plt.clf()
+        HMT.refreshNeeded = True
+        HMT.renderVoronoiDiagram()
+        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g, $r_{\infty}$ = %.3g, w3 = %.3g"%(z2, r0, r1, r2, rinf, w3))
+        plt.savefig("%i.svg"%framenum, bbox_inches='tight')
+        framenum += 1
+
+
 if __name__ == '__main__':
-    testQuadConfigurations()
+    #testQuadConfigurations()
+    testQuadWeights()
+    """
+    HMT = HypMergeTree()
+    HMT.z = np.array([0, 0.75, 1.25, 2.5], dtype = np.float64)
+    HMT.radii = np.array([0.4, 0.25, 0.2, 0.4, 2.0])
+    HMT.renderVoronoiDiagram()
+    plt.title("%s, %s"%(HMT.z, HMT.radii))
+    plt.savefig("0_1_2.svg", bbox_inches = 'tight')
+    """
