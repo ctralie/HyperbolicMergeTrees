@@ -399,26 +399,35 @@ def testEdgeFlip():
         plt.savefig("%i.png"%i, bbox_inches = 'tight')
 
 def testQuadWeights(NSamples = 200):
-    w1, w2, w4, w5 = 1.0, 1.0, 1.0, 1.0
+    w1, w2, w4, w5 = 2.0, 1.0, 1.0, 1.0
     z1 = 3.0
     getz2 = lambda w1, w2, w3, w4, w5: z1*(w2+w3+w5)/(w1+w3+w4)
     #First do branch on right
     HMT = HypMergeTree()
     framenum = 0
-    w3s = 1.0-np.linspace(0, 1, NSamples)
-    for w3 in w3s[[0, -1]]:
+    w3s = 2.0-2*np.linspace(0, 1, NSamples)
+    for w3 in w3s:
         z2 = getz2(w1, w2, w3, w4, w5)
         print("z2 = %g"%z2)
-        rinf = (z1+z2)/(w1+w3+w5)
-        r0 = z1*(w1+w2)
-        r1 = (w2+w3+w4)*((z1*z2)/(z1+z2))
-        r2 = z2*(w4+w5)
+        alpha_inf = w1 + w3 + w5
+        alpha0 = w1 + w2
+        alpha1 = w2 + w3 + w4
+        alpha2 = w4 + w5
+        A = z2*alpha1/(z1+z2)
+        rinf = (z1+z2)/alpha_inf
+        r0 = z1*alpha0
+        r1 = z1*A
+        r2 = z2*alpha2
         HMT.z = np.array([0, z1, z1+z2], dtype = np.float64)
-        HMT.radii = np.array([r0, r1, r2, 0.5*rinf])
+        HMT.radii = np.array([r0, r1, r2, rinf])
         plt.clf()
         HMT.refreshNeeded = True
         HMT.renderVoronoiDiagram()
-        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g, $r_{\infty}$ = %.3g, w3 = %.3g"%(z2, r0, r1, r2, rinf, w3))
+        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g"%(z2, r0, r1, r2, rinf, w3))
+        plt.xlim([-1, 6])
+        plt.ylim([0, 7])
+        ax = plt.gca()
+        ax.set(xlim=[-1, 6], ylim=[0, 7], aspect=1)
         plt.savefig("%i.png"%framenum, bbox_inches='tight')
         framenum += 1
 
