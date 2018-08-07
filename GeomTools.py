@@ -201,6 +201,47 @@ def testPointInRegion():
     plt.axis('equal')
     plt.show()
 
+def hyperbolicArclen(end, x):
+    """
+    Paramters
+    ---------
+    end: list
+        A 2 element list of endpoints for the semicircle containing the arc
+    x: ndarray(2, 2)
+        The endpoints of the segment, each along a row
+    Returns
+    -------
+    len: float 
+        Length of arc in the upper halfplane hyperbolic metric
+    """
+    if np.isinf(end[1]):
+        a = x[0, 1]
+        b = x[1, 1]
+    else:
+        gamma = lambda z: (z-end[0])/(z-end[1])
+        x1c = np.complex(x[0, 0], x[0, 1])
+        x2c = np.complex(x[1, 0], x[1, 1])
+        a = np.imag(gamma(x1c))
+        b = np.imag(gamma(x2c))
+    return np.abs(np.log(a/b))
+
+def hyperbolicArclen2(x):
+    x1, x2, y1, y2 = x[0, 0], x[1, 0], x[0, 1], x[1, 1]
+    arg = 1 + ((x2-x1)**2 + (y2-y1)**2)/(2*y1*y2)
+    return np.arccosh(arg)
+
 if __name__ == '__main__':
     #testArcIntersection()
-    testPointInRegion()
+    #testPointInRegion()
+    e1 = 2.0
+    r = 10.0
+    e2 = e1 + r
+    end = [e1, e2]
+    t = np.pi/3
+    x1 = [e1 + r/2 + (r/2)*np.cos(t), (r/2)*np.sin(t)]
+    t = np.pi/5
+    x2 = [e1 + r/2 + (r/2)*np.cos(t), (r/2)*np.sin(t)]
+    x = np.array([x1, x2])
+    res = hyperbolicArclen(end, x)
+    print(res)
+    print(hyperbolicArclen2(x))

@@ -70,7 +70,7 @@ class HypMergeTree(object):
         ylims[1] = max(ylims[1], 1.1*rs[-1])
         #Now draw all other horocycles
         for i in range(N):
-            plt.plot(rs[i]*XCirc[:, 0] + z[i], rs[i]*XCirc[:, 1]+rs[i], 'gray')
+            plt.plot((rs[i]/2)*XCirc[:, 0] + z[i], (rs[i]/2)*XCirc[:, 1]+(rs[i]/2), 'gray')
         
         #Plot vedges
         if plotVedges:
@@ -112,7 +112,7 @@ class HypMergeTree(object):
         #plt.ylim(ylims)
         return {'xlims':xlims, 'ylims':ylims}
     
-    def renderVoronoiDiagram(self, xlims = None, ylims = None, plotLabelNums = False, clipendpts = True):
+    def renderVoronoiDiagram(self, xlims = None, ylims = None, plotLabelNums = False, clipendpts = True, showlens = False):
         if not self.Ps or self.refreshNeeded:
             self.computeVoronoiGraph(clipendpts = clipendpts)
             self.refreshNeeded = False
@@ -147,6 +147,7 @@ class HypMergeTree(object):
                     #Vertical line
                     xs = arc[:, 0]
                     ys = arc[:, 1]
+                    half = np.array([np.mean(xs), np.mean(ys)])
                 else:
                     r = (b-a)/2.0
                     theta1 = acoscrop((arc[0, 0]-(a+r))/r)
@@ -154,11 +155,16 @@ class HypMergeTree(object):
                     t = np.linspace(theta1, theta2, 100)
                     xs = a+r+r*np.cos(t)
                     ys = r*np.sin(t)
+                    half = 0.5*(theta1 + theta2)
+                    half = np.array([a+r+r*np.cos(half), r*np.sin(half)])
                 if i2 == N:
                     plt.plot(xs, ys, linewidth=3, color=colors[i1])
                 else:
                     plt.plot(xs, ys, linewidth=2, color=colors[i1])
                     plt.plot(xs, ys, color=colors[i2], linestyle=':')
+                if showlens:
+                    length = hyperbolicArclen(vedges[(i1, i2)][0], np.array(PsLocs[[i, j], :]))
+                    plt.text(half[0], half[1], "%.3g"%length)
         plt.ylim(ylims)
         plt.axis('equal')
 
@@ -399,16 +405,18 @@ def testEdgeFlip():
         plt.savefig("%i.png"%i, bbox_inches = 'tight')
 
 def testQuadWeights(NSamples = 200):
-    w1, w2, w4, w5 = 2.0, 1.0, 1.0, 1.0
-    z1 = 3.0
+    w1, w2, w4, w5 = 1.0, 1.0, 1.0, 1.0
+    z1 = 1.0
     getz2 = lambda w1, w2, w3, w4, w5: z1*(w2+w3+w5)/(w1+w3+w4)
     #First do branch on right
     HMT = HypMergeTree()
     framenum = 0
-    w3s = 2.0-2*np.linspace(0, 1, NSamples)
+    w3max = 1.0
+    w3s = w3max - w3max*np.linspace(0, 1, NSamples+2)
+    rscale = 0.3
+    w3s = w3s[1:-1]
     for w3 in w3s:
         z2 = getz2(w1, w2, w3, w4, w5)
-        print("z2 = %g"%z2)
         alpha_inf = w1 + w3 + w5
         alpha0 = w1 + w2
         alpha1 = w2 + w3 + w4
@@ -418,16 +426,42 @@ def testQuadWeights(NSamples = 200):
         r0 = z1*alpha0
         r1 = z1*A
         r2 = z2*alpha2
+        r0, r1, r2 = r0*rscale, r1*rscale, r2*rscale
+        rinf = rinf/rscale
         HMT.z = np.array([0, z1, z1+z2], dtype = np.float64)
         HMT.radii = np.array([r0, r1, r2, rinf])
         plt.clf()
         HMT.refreshNeeded = True
         HMT.renderVoronoiDiagram()
-        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g"%(z2, r0, r1, r2, rinf, w3))
-        plt.xlim([-1, 6])
-        plt.ylim([0, 7])
+        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g\n$\\alpha$0=%.3g, $\\alpha$1=%.3g, $\\alpha$2=%.3g, $\\alpha_{\infty}$=%.3g"%(z2, r0, r1, r2, rinf, w3, alpha0, alpha1, alpha2, alpha_inf))
         ax = plt.gca()
-        ax.set(xlim=[-1, 6], ylim=[0, 7], aspect=1)
+        ax.set(xlim=[-2, 5], ylim=[-2, 5], aspect=1)
+        plt.savefig("%i.png"%framenum, bbox_inches='tight')
+        framenum += 1
+    
+    w3s = w3max - w3s
+    for w3 in w3s:
+        print("framenum = %i"%framenum)
+        z2 = getz2(w1, w2, w3, w4, w5)
+        alpha_inf = w1 + w5
+        alpha0 = w1 + w2 + w3
+        alpha1 = w2 + w4
+        alpha2 = w3 + w4 + w5
+        A = z1*z2*alpha1/(z1+z2) #This is the only one that's different!
+        rinf = (z1+z2)/alpha_inf
+        r0 = z1*alpha0
+        r1 = z1*A
+        r2 = z2*alpha2
+        r0, r1, r2 = r0*rscale, r1*rscale, r2*rscale
+        rinf = rinf/rscale
+        HMT.z = np.array([0, z1, z1+z2], dtype = np.float64)
+        HMT.radii = np.array([r0, r1, r2, rinf])
+        plt.clf()
+        HMT.refreshNeeded = True
+        HMT.renderVoronoiDiagram()
+        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g\n$\\alpha$0=%.3g, $\\alpha$1=%.3g, $\\alpha$2=%.3g, $\\alpha_{\infty}$=%.3g"%(z2, r0, r1, r2, rinf, w3, alpha0, alpha1, alpha2, alpha_inf))
+        ax = plt.gca()
+        ax.set(xlim=[-2, 5], ylim=[-2, 5], aspect=1)
         plt.savefig("%i.png"%framenum, bbox_inches='tight')
         framenum += 1
 
