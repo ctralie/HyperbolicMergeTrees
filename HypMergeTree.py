@@ -107,9 +107,6 @@ class HypMergeTree(object):
             for i in range(N-1):
                 r = (z[i+1] - z[i])/2.0
                 plt.plot(r*XSemi[:, 0] + z[i] + r, r*XSemi[:, 1], 'k')
-        plt.axis('equal')
-        #plt.xlim(xlims)
-        #plt.ylim(ylims)
         return {'xlims':xlims, 'ylims':ylims}
     
     def renderVoronoiDiagram(self, xlims = None, ylims = None, plotLabelNums = False, clipendpts = True, showlens = False):
@@ -166,7 +163,6 @@ class HypMergeTree(object):
                     length = hyperbolicArclen(vedges[(i1, i2)][0], np.array(PsLocs[[i, j], :]))
                     plt.text(half[0], half[1], "%.3g"%length)
         plt.ylim(ylims)
-        plt.axis('equal')
 
     def getVedgePoints(self):
         z = self.z
@@ -345,7 +341,7 @@ class HypMergeTree(object):
             for i, [p2, edges] in enumerate(Ps):
                 if np.sum((p1-p2)**2) < eps:
                     closeToOther = True
-                    Ps[i][1].union(set(idxs))
+                    Ps[i][1] = Ps[i][1].union(set(idxs))
                     break
             if not closeToOther:
                 Ps.append([p1, set(idxs)])
