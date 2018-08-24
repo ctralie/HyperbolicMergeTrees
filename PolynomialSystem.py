@@ -119,3 +119,12 @@ def gradg(xs, ws, allidxs):
     for idxs in allidxs:
         res += f(xs, ws, idxs)*gradf(xs, ws, idxs)
     return res
+
+def solvesystem(x0, ws, allidxs, verbose=False):
+    res = opt.minimize(g, x0, args = (ws, allidxs), method='BFGS', jac=gradg)
+    xsol = res['x']
+    if verbose:
+        print("g(x0) = ", g(x0, ws, allidxs))
+        print("xsol = ", xsol)
+        print("g(xsol) = ", g(xsol, ws, allidxs))
+    return xsol

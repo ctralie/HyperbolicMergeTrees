@@ -1,24 +1,15 @@
-import scipy.optimize as opt
 import numpy as np
 import matplotlib.pyplot as plt
 from HypMergeTree import *
-from PolynomialSystem import g, gradg
+from PolynomialSystem import g, gradg, solvesystem
 
-def get_pentagon_xs(ws, x0, verbose = False):
+def get_pentagon_xs_zs_rs(ws, x0 = np.ones(2)):
     # a = w5, b = w1, c = w2, d = w6, e = x2
     idxs1 = [0, 6, 2, 3, 7, 1]
     # a = w6, b = (w2-x1), c = w3, d = w7, e = w4
     idxs2 = [1, 7, [0, 3], 4, 8, 5]
-    res = opt.minimize(g, x0, args = (ws, [idxs1, idxs2]), method='BFGS', jac=gradg)
-    xsol = res['x']
-    if verbose:
-        print("g(x0) = ", g(x0, ws))
-        print("xsol = ", xsol)
-        print("g(xsol) = ", g(xsol, ws))
-    return xsol
+    xs = solvesystem(x0, ws, [idxs1, idxs2])
 
-def get_pentagon_zs_rs(ws, x0 = np.ones(2)):
-    xs = get_pentagon_xs(ws, x0)
     z1 = 1.0
     getz2 = lambda z1, xs, ws: z1*(xs[0]+ws[4])/(ws[1]-xs[0]+ws[5])
     getz3 = lambda z2, xs, ws: z2*(xs[1]+ws[5])/(ws[2]-xs[1]+ws[6])
@@ -35,6 +26,19 @@ def get_pentagon_zs_rs(ws, x0 = np.ones(2)):
 
     return xs, np.array([0, z1, z1+z2, z1+z2+z3]), np.array([r0, r1, r2, r3, rinf])
 
+def get_hexagon_xs(ws, x0 = np.ones(3), verbose = False):
+    # a = w6, b = w1, c = w2, d = w7, e = x2
+    idxs1 = [0, 8, 3, 4, 9, 1]
+    # a = w7, b = (w2-x1), c = w3, d = w8, e = x3
+    idxs2 = [1, 9, [0, 4], 5, 10, 2]
+    # a = w8, b = w3-x2, c = w4, d = w9, e = w5
+    idxs3 = [2, 10, [1, 5], 6, 11, 7]
+    xs = solvesystem(x0, ws, [idxs1, idxs2, idxs3])
+
+    z1 = 1.0
+    getz2 = lambda z1, xs, ws: z1*(xs[0]+ws[5])/(ws[1]-xs[0]+ws[6])
+    getz3 = lambda z2, xs, ws: z2*(xs[1]+ws[6])/(ws[2]-xs[1]+ws[7])
+
 def pentagon_edgecollapse():
     np.random.seed(3)
     ws = np.random.rand(7)
@@ -47,7 +51,7 @@ def pentagon_edgecollapse():
     plt.figure(figsize=(6, 6))
     for i, w6 in enumerate(w6s):
         ws[5] = w6
-        xs, zs, rs = get_pentagon_zs_rs(ws)
+        xs, zs, rs = get_pentagon_xs_zs_rs(ws)
         rs[0:-1] *= rscale
         rs[-1] /= rscale
         HMT.z = zs
