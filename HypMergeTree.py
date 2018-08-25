@@ -386,90 +386,10 @@ class HypMergeTree(object):
         self.vedges = vedges
         return {'Ps':Ps, 'Ps2P_Vedge':Ps2P_Vedge, 'vedges':vedges}
 
-def testEdgeFlip():
-    HMT = HypMergeTree()
-    HMT.z = np.array([0, 1, 2], dtype = np.float64)
-    HMT.radii = np.array([0.25, 0.125, 0.25, 4.0])
-    for i, z2 in enumerate(np.linspace(1.5, 2.5, 50)):
-        HMT.z[-1] = z2
-        plt.clf()
-        HMT.refreshNeeded = True
-        HMT.renderVoronoiDiagram()
-        plt.scatter([-2, 5], [1, 1], 20, 'w')
-        plt.axis('equal')
-        plt.title("z2 = %.3g"%z2)
-        plt.savefig("%i.png"%i, bbox_inches = 'tight')
-
-def testQuadWeights(NSamples = 200):
-    w1, w2, w4, w5 = 1.0, 1.0, 1.0, 1.0
-    z1 = 1.0
-    getz2 = lambda w1, w2, w3, w4, w5: z1*(w2+w3+w5)/(w1+w3+w4)
-    #First do branch on right
-    HMT = HypMergeTree()
-    framenum = 0
-    w3max = 1.0
-    w3s = w3max - w3max*np.linspace(0, 1, NSamples+2)
-    rscale = 0.3
-    w3s = w3s[1:-1]
-    for w3 in w3s:
-        z2 = getz2(w1, w2, w3, w4, w5)
-        alpha_inf = w1 + w3 + w5
-        alpha0 = w1 + w2
-        alpha1 = w2 + w3 + w4
-        alpha2 = w4 + w5
-        A = z2*alpha1/(z1+z2)
-        rinf = (z1+z2)/alpha_inf
-        r0 = z1*alpha0
-        r1 = z1*A
-        r2 = z2*alpha2
-        r0, r1, r2 = r0*rscale, r1*rscale, r2*rscale
-        rinf = rinf/rscale
-        HMT.z = np.array([0, z1, z1+z2], dtype = np.float64)
-        HMT.radii = np.array([r0, r1, r2, rinf])
-        plt.clf()
-        HMT.refreshNeeded = True
-        HMT.renderVoronoiDiagram()
-        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g\n$\\alpha$0=%.3g, $\\alpha$1=%.3g, $\\alpha$2=%.3g, $\\alpha_{\infty}$=%.3g"%(z2, r0, r1, r2, rinf, w3, alpha0, alpha1, alpha2, alpha_inf))
-        ax = plt.gca()
-        ax.set(xlim=[-2, 5], ylim=[-2, 5], aspect=1)
-        plt.savefig("%i.png"%framenum, bbox_inches='tight')
-        framenum += 1
-    
-    w3s = w3max - w3s
-    for w3 in w3s:
-        print("framenum = %i"%framenum)
-        z2 = getz2(w1, w2, w3, w4, w5)
-        alpha_inf = w1 + w5
-        alpha0 = w1 + w2 + w3
-        alpha1 = w2 + w4
-        alpha2 = w3 + w4 + w5
-        A = z1*z2*alpha1/(z1+z2) #This is the only one that's different!
-        rinf = (z1+z2)/alpha_inf
-        r0 = z1*alpha0
-        r1 = z1*A
-        r2 = z2*alpha2
-        r0, r1, r2 = r0*rscale, r1*rscale, r2*rscale
-        rinf = rinf/rscale
-        HMT.z = np.array([0, z1, z1+z2], dtype = np.float64)
-        HMT.radii = np.array([r0, r1, r2, rinf])
-        plt.clf()
-        HMT.refreshNeeded = True
-        HMT.renderVoronoiDiagram()
-        plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g\n$\\alpha$0=%.3g, $\\alpha$1=%.3g, $\\alpha$2=%.3g, $\\alpha_{\infty}$=%.3g"%(z2, r0, r1, r2, rinf, w3, alpha0, alpha1, alpha2, alpha_inf))
-        ax = plt.gca()
-        ax.set(xlim=[-2, 5], ylim=[-2, 5], aspect=1)
-        plt.savefig("%i.png"%framenum, bbox_inches='tight')
-        framenum += 1
-
-
 if __name__ == '__main__':
-    #testQuadConfigurations()
-    testQuadWeights()
-    """
     HMT = HypMergeTree()
     HMT.z = np.array([0, 0.75, 1.25, 2.5], dtype = np.float64)
     HMT.radii = np.array([0.4, 0.25, 0.2, 0.4, 2.0])
     HMT.renderVoronoiDiagram()
     plt.title("%s, %s"%(HMT.z, HMT.radii))
     plt.savefig("0_1_2.svg", bbox_inches = 'tight')
-    """
