@@ -64,14 +64,13 @@ def testQuadEdgeFlip(NSamples = 200):
         plt.savefig("%i.png"%framenum, bbox_inches='tight')
         framenum += 1
 
-def get_pentagon_xs_zs_rs(ws, x0 = np.ones(2)):
+def get_pentagon_xs_zs_rs(ws, x0 = np.ones(2), z1 = 1.0):
     # a = w5, b = w1, c = w2, d = w6, e = x2
     idxs1 = [0, 6, 2, 3, 7, 1]
     # a = w6, b = (w2-x1), c = w3, d = w7, e = w4
     idxs2 = [1, 7, [0, 3], 4, 8, 5]
     xs = solvesystem(x0, ws, [idxs1, idxs2])
 
-    z1 = 1.0
     getz2 = lambda z1, xs, ws: z1*(xs[0]+ws[4])/(ws[1]-xs[0]+ws[5])
     getz3 = lambda z2, xs, ws: z2*(xs[1]+ws[5])/(ws[2]-xs[1]+ws[6])
 
@@ -96,10 +95,9 @@ def get_hexagon_xs(ws, x0 = np.ones(3), verbose = False):
     idxs3 = [2, 10, [1, 5], 6, 11, 7]
     return solvesystem(x0, ws, [idxs1, idxs2, idxs3], verbose)
 
-def get_hexagon_xs_zs_rs(ws, x0 = np.ones(3), xs = np.array([]), verbose = False):
+def get_hexagon_xs_zs_rs(ws, x0 = np.ones(3), xs = np.array([]), z1 = 1.0, verbose = False):
     if xs.size == 0:
         xs = get_hexagon_xs(ws, x0)
-    z1 = 1.0
     getz2 = lambda z1, xs, ws: z1*(xs[0]+ws[5])/(ws[1]-xs[0]+ws[6])
     getz3 = lambda z2, xs, ws: z2*(xs[1]+ws[6])/(ws[2]-xs[1]+ws[7])
     getz4 = lambda z3, xs, ws: z3*(xs[2]+ws[7])/(ws[3]-xs[2]+ws[8])
@@ -154,15 +152,16 @@ def hexagon_edgecollapse():
     np.random.seed(3)
     ws = np.random.rand(9)
     ws = np.round(ws*10)/10.0
+    ws[6] = 0.4
     print("ws = ", ws)
     HMT = HypMergeTree()
     rscale = 0.5
 
-    w6s = np.linspace(ws[5], 0, 300)
+    w7s = np.linspace(ws[6], 0, 300)
     plt.figure(figsize=(6, 6))
     idx = 0
-    for w6 in w6s:
-        ws[5] = w6
+    for w7 in w7s:
+        ws[6] = w7
         xs, zs, rs = get_hexagon_xs_zs_rs(ws)
         rs[0:-1] *= rscale
         rs[-1] /= rscale
@@ -180,6 +179,24 @@ def hexagon_edgecollapse():
         plt.title("x1 = %.3g, x2 = %.3g, x3 = %.3g"%tuple(xs.tolist()))
         plt.savefig("%i.png"%idx)
         idx += 1
+    
+    # Now plot the pentagon that results after this edge is gone
+    wsp = [ws[0], ws[1]+ws[2], ws[3], ws[4], ws[5], ws[7], ws[8]]
+    xs, zs, rs = get_pentagon_xs_zs_rs(wsp)
+    rs[0:-1] *= rscale
+    rs[-1] /= rscale
+    zs = np.cumsum(zs)
+    HMT.z = zs
+    HMT.radii = rs
+    plt.clf()
+    HMT.refreshNeeded = True
+    HMT.renderVoronoiDiagram()
+    plt.plot([zs[1]]*2, [0, 3.5], linestyle=':', color='k')
+    plt.plot([zs[2]]*2, [0, 3.5], linestyle=':', color='k')
+    plt.xlim([-0.5, 5])
+    plt.ylim([-0.5, 5])
+    plt.title("x1 = %.3g, x2 = %.3g"%tuple(xs.tolist()))
+    plt.savefig("%i.png"%idx)
 
 
 def getCSM(X, Y):
@@ -278,5 +295,5 @@ def hexagon_multiinit():
 
 if __name__ == '__main__':
     #pentagon_edgecollapse()
-    #hexagon_edgecollapse()
-    hexagon_multiinit()
+    hexagon_edgecollapse()
+    #hexagon_multiinit()
