@@ -4,7 +4,7 @@ from HypMergeTree import *
 from PolynomialSystem import g, gradg, solvesystem
 
 def testQuadEdgeFlip(NSamples = 200):
-    w1, w2, w4, w5 = 1.0, 1.0, 1.0, 1.0
+    w1, w2, w4, w5 = 1.0, 2.0, 1.0, 1.5
     z1 = 1.0
     getz2 = lambda w1, w2, w3, w4, w5: z1*(w2+w3+w5)/(w1+w3+w4)
     #First do branch on right
@@ -34,8 +34,8 @@ def testQuadEdgeFlip(NSamples = 200):
         HMT.renderVoronoiDiagram()
         plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g\n$\\alpha$0=%.3g, $\\alpha$1=%.3g, $\\alpha$2=%.3g, $\\alpha_{\infty}$=%.3g"%(z2, r0, r1, r2, rinf, w3, alpha0, alpha1, alpha2, alpha_inf))
         ax = plt.gca()
-        ax.set(xlim=[-2, 5], ylim=[-2, 5], aspect=1)
-        plt.savefig("%i.png"%framenum, bbox_inches='tight')
+        ax.set(xlim=[-1, 5], ylim=[-1, 5], aspect=1)
+        plt.savefig("%i.png"%framenum, bbox_inches='tight', dpi=300)
         framenum += 1
     
     w3s = w3max - w3s
@@ -60,8 +60,8 @@ def testQuadEdgeFlip(NSamples = 200):
         HMT.renderVoronoiDiagram()
         plt.title("z2 = %.3g, r0 = %.3g, r1 = %.3g, r2 = %.3g\n$r_{\infty}$ = %.3g, w3 = %.3g\n$\\alpha$0=%.3g, $\\alpha$1=%.3g, $\\alpha$2=%.3g, $\\alpha_{\infty}$=%.3g"%(z2, r0, r1, r2, rinf, w3, alpha0, alpha1, alpha2, alpha_inf))
         ax = plt.gca()
-        ax.set(xlim=[-2, 5], ylim=[-2, 5], aspect=1)
-        plt.savefig("%i.png"%framenum, bbox_inches='tight')
+        ax.set(xlim=[-1, 5], ylim=[-1, 5], aspect=1)
+        plt.savefig("%i.png"%framenum, bbox_inches='tight', dpi=300)
         framenum += 1
 
 def get_pentagon_xs_zs_rs(ws, x0 = np.ones(2), z1 = 1.0):
@@ -293,7 +293,53 @@ def hexagon_multiinit():
             plt.savefig("HexagonExample%i_%i.png"%(seed+1, i+1))
 
 
+def testEvenEdges():
+    HMT = HypMergeTree()
+    ws = np.ones(9)
+    rscale = 1.0
+    xs, zs, rs = get_hexagon_xs_zs_rs(ws)
+    print("xs = ", xs)
+    print("zs = ", zs)
+    print("rs = ", rs)
+    rs[0:-1] *= rscale
+    rs[-1] /= rscale
+    zs = np.cumsum(zs)
+    HMT.z = zs
+    HMT.radii = rs
+    HMT.refreshNeeded = True
+    HMT.renderVoronoiDiagram()
+    plt.show()
+
+
+def testQuadSimplified(NSamples = 100):
+    w1, w2, w4, w5 = 1.0, 2.0, 1.0, 1.5
+    z1 = 1.0
+    z2 = 2.0
+    #First do branch on right
+    HMT = HypMergeTree()
+    framenum = 0
+    w3max = 1.0
+    w3s = w3max - w3max*np.linspace(0, 1, NSamples+2)
+    w3s = w3s[1:-1]
+    for w3 in w3s:
+        r0 = z1*(w1+w2)
+        r1 = (w2+w3+w4)*(z2-z1)*z1
+        r2 = z2*(w4+w5)
+        rinf = (z1+z2)/(w1+w3+w5)
+        HMT.z = np.array([0, z1, z2], dtype = np.float64)
+        HMT.radii = np.array([r0, r1, r2, rinf])
+        plt.clf()
+        HMT.refreshNeeded = True
+        HMT.renderVoronoiDiagram()
+        plt.title("w3 = %.3g"%w3)
+        plt.axis('equal')
+        plt.savefig("%i.png"%framenum, bbox_inches='tight', dpi=300)
+        framenum += 1
+
 if __name__ == '__main__':
     #pentagon_edgecollapse()
-    hexagon_edgecollapse()
+    #hexagon_edgecollapse()
     #hexagon_multiinit()
+    #testEvenEdges()
+    #testQuadEdgeFlip()
+    testQuadSimplified()
