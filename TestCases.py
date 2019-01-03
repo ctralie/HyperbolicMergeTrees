@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from MergeTree import *
 from HypMergeTree import *
-from PolynomialSystem import g, gradg, solvesystem
+from HypDelaunay import g, gradg, solvesystem
 
 def testQuadEdgeFlip(NSamples = 200):
     w1, w2, w4, w5 = 1.0, 2.0, 1.0, 1.5

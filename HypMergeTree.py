@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import itertools
 from GeomTools import *
+from MergeTree import *
 
 def getPointsNumDenom(a, b, c, d):
     res = np.array([np.inf, np.inf])
