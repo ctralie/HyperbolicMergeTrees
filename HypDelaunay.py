@@ -286,7 +286,7 @@ class HyperbolicDelaunay(object):
             cleft, cright = cright, cleft
         vnew = self.addVertex()
         eleft = self.addEdge(edge.v1, vnew, internal=True, weight=node.X[-1]-cleft.X[-1])
-        eright = self.addEdge(edge.v2, vnew, internal=True, weight=node.X[-1]-cright.X[-1])
+        eright = self.addEdge(vnew, edge.v2, internal=True, weight=node.X[-1]-cright.X[-1])
         # Recurse on left and right subtrees
         if not self.init_from_mergetree_rec(eleft, cleft):
             eleft.internal = False
@@ -311,7 +311,7 @@ class HyperbolicDelaunay(object):
         ## Step 1: Build triangulation
         vinf = self.addVertex(-1)
         v0 = self.addVertex(0)
-        eroot = self.addEdge(vinf, v0, internal=False, weight=rootweight)
+        eroot = self.addEdge(v0, vinf, internal=False, weight=rootweight)
         self.init_from_mergetree_rec(eroot, MT.root)
 
         ## Step 2: Figure out order of ideal vertices
@@ -379,6 +379,9 @@ if __name__ == '__main__':
     G = MergeNode(np.array([-3, 0]))
     H = MergeNode(np.array([-1, 0.5]))
     F.addChildren([G, H])
+    I = MergeNode(np.array([1, 2.6]))
+    J = MergeNode(np.array([4, 2.3]))
+    B.addChildren([J, I])
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
