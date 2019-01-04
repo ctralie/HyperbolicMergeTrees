@@ -230,6 +230,13 @@ class HDTTri(object):
         self.edges = edges
         for e in edges:
             e.addFace(self)
+    
+    def getVertices(self):
+        verts = set([])
+        for e in self.edges:
+            verts.add(e.v1)
+            verts.add(e.v2)
+        return verts
 
 class HyperbolicDelaunay(object):
     def __init__(self):
@@ -292,6 +299,8 @@ class HyperbolicDelaunay(object):
             eleft.internal = False
         if not self.init_from_mergetree_rec(eright, cright):
             eright.internal = False
+        # Add triangle corresponding to this new branch
+        self.addTriangle([edge, eleft, eright])
         return True
 
 
@@ -343,6 +352,7 @@ class HyperbolicDelaunay(object):
         associated to each edge
         """
         N = len(self.vertices)
+        ## Step 1: Draw triangulation
         # Draw 0 and infinity at the top
         dTheta = 2*np.pi/N
         theta0 = np.pi/2 - dTheta/2
@@ -362,7 +372,24 @@ class HyperbolicDelaunay(object):
             plt.plot([x[0], y[0]], [x[1], y[1]])
             x = 0.5*(x + y)
             plt.text(x[0], x[1], "%.3g"%edge.weight)
-            
+        
+        ## Step 2: Draw tree inside of triangulation
+        for T in self.triangles:
+            vs = T.getVertices()
+            vidxs = np.array([v.index+1 for v in vs])
+            c1 = np.mean(Xs[vidxs, :], 0)
+            plt.scatter(c1[0], c1[1], 60, 'k')
+            for e in T.edges:
+                T2 = e.faceAcross(T)
+                if T2:
+                    idxs = np.array([v.index+1 for v in T2.getVertices()])
+                    c2 = np.mean(Xs[idxs, :], 0)
+                else:
+                    idxs = np.array([e.v1.index+1, e.v2.index+1])
+                    c2 = np.mean(Xs[idxs, :], 0)
+                    plt.scatter(c2[0], c2[1], 60, 'k')
+                plt.plot([c1[0], c2[0]], [c1[1], c2[1]], 'k')
+
 
 if __name__ == '__main__':
     T = MergeTree(TotalOrder2DX)
