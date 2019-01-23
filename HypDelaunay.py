@@ -8,6 +8,7 @@ import scipy.optimize as opt
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+from heapq import heappush, heappop
 from MergeTree import *
 
 def getvals(xs, ws, idxs):
@@ -183,6 +184,7 @@ class HDTEdge(object):
         self.f1, self.f2 = None, None
         self.internal = internal
         self.weight = weight
+        self.idx = -1 # Used to index internal edge
         v1.edges.add(self)
         v2.edges.add(self)
 
@@ -211,6 +213,16 @@ class HDTEdge(object):
             return self.f1
         sys.stderr.write("Warning (faceAcross): Face not member of edge\n")
         return None
+    
+    def triangleInCommon(self, other):
+        fs1 = set([self.f1, self.f2])
+        fs2 = set([other.f1, other.f2])
+        res = fs1.intersection(fs2)
+        res.discard(None)
+        if len(res) == 1:
+            return list(res)[0]
+        return None
+
 
 class HDTTri(object):
     """
@@ -237,6 +249,30 @@ class HDTTri(object):
             verts.add(e.v1)
             verts.add(e.v2)
         return verts
+    
+    def getOtherEdges(self, e):
+        """
+        Return the two other edges in the triangle
+        """
+        ret = set(self.edges)
+        ret.discard(e)
+        return list(ret)
+    
+    def getEdgeToLeft(self, e):
+        """
+        Return the edge to the left of this edge
+        """
+        for i, e2 in enumerate(self.edges):
+            if e == e2:
+                return self.edges[(i-1)%3]
+
+    def getEdgeToRight(self, e):
+        """
+        Return the edge to the left of this edge
+        """
+        for i, e2 in enumerate(self.edges):
+            if e == e2:
+                return self.edges[(i+1)%3]
 
 class HyperbolicDelaunay(object):
     def __init__(self):
@@ -338,13 +374,89 @@ class HyperbolicDelaunay(object):
         vcurr = v0
         eright = eroot
         index = 0
+        self.vertices[0] = vinf
         while not (vcurr == vinf):
             vcurr.index = index
             index += 1
+            self.vertices[index] = vcurr
             # Move to the next edge in CCW order
             eright = [e for e in vcurr.edges.difference([eright]) if (not e.internal)][0]
             vcurr = eright.vertexAcross(vcurr)
-    
+
+        # Index the internal edges
+        idx = 0
+        for e in self.edges:
+            if e.internal:
+                e.idx = idx
+                idx += 1
+
+    def getPathLR(self, e1, e2, left):
+        """
+        Find a path through the triangulation from the first
+        edge to the second edge, inclusive, going either
+        to the left or to the right at every step
+        Parameters
+        ----------
+        e1: HDTEdge
+            Start edge
+        e2: HDTEdge
+            End edge
+        left: boolean
+            If true, go left.  If false, go right
+        """
+        path = [e1]
+        # First try path to the left
+        face = e1.f1
+        if not face:
+            face = e1.f2
+        while face:
+            if left:
+                enext = face.getEdgeToLeft(path[-1])
+            else:
+                enext = face.getEdgeToRight(path[-1])
+            path.append(enext)
+            face = enext.faceAcross(face)
+        if path[-1] == e2:
+            return path
+        return []
+
+    def getPath(self, e1, e2):
+        """
+        Find a path through the triangulation from the first
+        edge to the second edge, inclusive
+        Parameters
+        ----------
+        e1: HDTEdge
+            Start edge
+        e2: HDTEdge
+            End edge
+        """
+        path = self.getPathLR(e1, e2, True)
+        if len(path) == 0:
+            path = self.getPathLR(e1, e2, False)
+        return path
+
+
+    def getAlpha(self, v, el, er):
+        """
+        Return the affine function of the internal edge lengths
+        that gives rise to the horo arc length between two edges
+        centered at a vertex
+        Parameters
+        ----------
+        v: HDTVertex
+            Center vertex
+        el: HDTEdge
+            Left edge
+        er: HDTEdge
+            Right edge
+        """
+        N = len(self.vertices)
+        a = 0.0
+        deltas = np.zeros(N-3)
+        # TODO: Finish this
+
+
     def render(self):
         """
         Render a regular convex polygon depicting the triangulation
@@ -371,7 +483,10 @@ class HyperbolicDelaunay(object):
             y = Xs[v2.index+1, :]
             plt.plot([x[0], y[0]], [x[1], y[1]])
             x = 0.5*(x + y)
-            plt.text(x[0], x[1], "%.3g"%edge.weight)
+            s = "%.3g"%edge.weight
+            if edge.internal:
+                s = "%s (%i)"%(s, edge.idx)
+            plt.text(x[0], x[1], s)
         
         ## Step 2: Draw tree inside of triangulation
         for T in self.triangles:
@@ -409,9 +524,18 @@ if __name__ == '__main__':
     I = MergeNode(np.array([1, 2.6]))
     J = MergeNode(np.array([4, 2.3]))
     B.addChildren([J, I])
+    K = MergeNode(np.array([-4.1, 1]))
+    L = MergeNode(np.array([-3.1, 1]))
+    #E.addChildren([K, L])
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
+
+    e1 = hd.getEdge(hd.vertices[0], hd.vertices[1])
+    e2 = hd.getEdge(hd.vertices[1], hd.vertices[2])
+    path = hd.getPath(e1, e2)
+    for e in path:
+        print("%i <---> %i"%(e.v1.index, e.v2.index))
 
     plt.subplot(121)
     T.render(offset=np.array([0, 0]))
