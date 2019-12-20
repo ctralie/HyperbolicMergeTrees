@@ -142,202 +142,176 @@ def solvesystem(x0, ws, allidxs, verbose=False):
 
 
 """
-Classes for handling Delaunay triangulations of an arrangement of
-ideal hyperbolic vertices
+Half-edge data structure for handling Delaunay triangulations of an 
+arrangement of ideal hyperbolic vertices
 """
+
+
+    
+class HDTHedge(object):
+    """
+    A class for storing an ideal hyperbolic Delaunay Triangulation half-edge
+
+    Attributes
+    ----------
+    face: HDTTri
+        The face to the left of this half-edge
+    pair: HDTHedge
+        The half-edge paired with this edge
+    prev: HDTHedge
+        The previous half-edge in CCW order
+    next: HDTHedge
+        The next half-edge in CCW order
+
+    weight: float
+        Weight of the vedge that crosses this edge if it's
+        an internal edge, or weight of the leaf vedge that terminates
+        on this edge if it's a boundary edge
+    internal_idx: int
+        Index of the internal edge (or -1 if it is an external edge)
+    is_aux: boolean
+        If this is an internal edge, then this is
+        either the auxiliary length, or the weight
+        minus the auxiliary length
+    """
+    def __init__(self):
+        self.face = None
+        self.pair = None
+        self.prev = None
+        self.next = None
+        self.head = None
+        self.weight = None
+        self.internal_idx = -1
+        self.is_aux = False
+    
+    def link_next_edge(self, n):
+        """
+        Make this edge's next pointer n, and make
+        next's prev pointer this edge
+        Parameters
+        ----------
+        n: HDTHedge
+            The half-edge that should be next in order
+        """
+        self.next = n
+        n.prev = self
+    
+    def add_pair(self, other):
+        """
+        Pair this edge with another edge
+        other: HDTHedge
+            The edge with which to pair this edge
+        """
+        self.pair = other
+        other.pair = self
+
+
 
 class HDTVertex(object):
     """
     A class for storing an ideal hyperbolic Delaunay Triangulation vertex
-    Parameters
+    
+    Attributes
     ----------
     index: int
         The CCW order of this point on the boundary of the delaunay
         triangulation (-1 means infinity)
+    h: HDTHedge
+        Any half-edge on this vertex
     """
-    def __init__(self, index):
+    def __init__(self, index=None):
         self.index = index
-        self.edges = set([]) # Delaunay edges emanating from this vertex
-    
-class HDTEdge(object):
-    """
-    A class for storing an ideal hyperbolic Delaunay Triangulation edge
-    """
-    def __init__(self, v1, v2, internal, weight):
-        """
-        Initialize an edge object, and update the two vertices to 
-        have this edge in their list of incident edges
-        Parameters
-        ----------
-        v1: HDTVertex
-            First vertex on this edge
-        v2: HDTVertex
-            Second vertex on this edge
-        internal: boolean
-            True if an internal edge, false if a boundary edge
-        weight: float
-            Weight of the vedge that crosses this edge if it's
-            an internal edge, or weight of the leaf vedge that terminates
-            on this edge if it's a boundary edge
-        """
-        self.v1, self.v2 = v1, v2
-        self.f1, self.f2 = None, None
-        self.internal = internal
-        self.weight = weight
-        self.idx = -1 # Used to index internal edge
-        v1.edges.add(self)
-        v2.edges.add(self)
+        self.h = None
 
-    def vertexAcross(self, startV):
-        if startV == self.v1:
-            return self.v2
-        if startV == self.v2:
-            return self.v1
-        sys.stderr.write("Warning (vertexAcross): Vertex not member of edge\n")
-        return None
-
-    def addFace(self, face):
-        if self.f1 == None:
-            self.f1 = face
-        elif self.f2 == None:
-            self.f2 = face
-        else:
-            sys.stderr.write("Cannot add face to edge; already 2 there\n")
-            return False
-        return True
-    
-    def faceAcross(self, startF):
-        if startF == self.f1:
-            return self.f2
-        if startF == self.f2:
-            return self.f1
-        sys.stderr.write("Warning (faceAcross): Face not member of edge\n")
-        return None
-    
-    def triangleInCommon(self, other):
-        fs1 = set([self.f1, self.f2])
-        fs2 = set([other.f1, other.f2])
-        res = fs1.intersection(fs2)
-        res.discard(None)
-        if len(res) == 1:
-            return list(res)[0]
-        return None
 
 
 class HDTTri(object):
     """
     A class for storing an ideal hyperbolic Delaunay Triangulation triangle
+    Attributes
+    ----------
+    h: HDTEdge
+        Any half-edge with this face as its face
     """
-    def __init__(self, edges):
-        """
-        Initialize a triangle from three edges, and update the edges
-        to point to this triangle
-        Parameters
-        ----------
-        edges: list (HDTEdge)
-            A list of 3 edges making up the triangle.  The first
-            edge is the root edge, the second edge is the left edge,
-            and the third edge is the right edge
-        """
-        self.edges = edges
-        for e in edges:
-            e.addFace(self)
+    def __init__(self):
+        self.h = None
     
     def getVertices(self):
-        verts = set([])
-        for e in self.edges:
-            verts.add(e.v1)
-            verts.add(e.v2)
-        return verts
-    
-    def getOtherEdges(self, e):
         """
-        Return the two other edges in the triangle
+        Return a list of the HDTVertex objects that 
+        make up this triangle
+        Returns
+        -------
+        vertices: list of [HDTVertex]
+            List of vertices on this triangle
         """
-        ret = set(self.edges)
-        ret.discard(e)
-        return list(ret)
-    
-    def getEdgeToLeft(self, e):
-        """
-        Return the edge to the left of this edge
-        """
-        for i, e2 in enumerate(self.edges):
-            if e == e2:
-                return self.edges[(i-1)%3]
-
-    def getEdgeToRight(self, e):
-        """
-        Return the edge to the left of this edge
-        """
-        for i, e2 in enumerate(self.edges):
-            if e == e2:
-                return self.edges[(i+1)%3]
+        vertices = [self.h.head]
+        edge = self.h.next
+        while not (edge == self.h):
+            vertices.append(edge.head)
+            edge = edge.next
+        return vertices
+        
 
 class HyperbolicDelaunay(object):
+    """
+    The object that stores all half-edges, faces,
+    and vertices of the triangulation, as well as
+    functions to help initialize it
+    """
     def __init__(self):
         self.vertices = []
         self.edges = []
         self.triangles = []
     
-    def getEdge(self, v1, v2):
-        edge = v1.edges & v2.edges
-        if len(edge) > 1:
-            sys.stderr.write("Warning: More than one edge found on vertex list intersection\n")
-        for e in edge:
-            return e
-        return None
-
-    def addVertex(self, index = -1):
-        v = HDTVertex(index)
-        self.vertices.append(v)
-        return v
-
-    def addEdge(self, v1, v2, internal, weight):
-        edge = HDTEdge(v1, v2, internal, weight)
-        self.edges.append(edge)
-        return edge
-
-    def addTriangle(self, edges):
-        tri = HDTTri(edges)
-        self.triangles.append(tri)
-        return tri
-    
-    def init_from_mergetree_rec(self, edge, node):
+    def init_from_mergetree_rec(self, etop, node):
         """
         Recursive helper function for initializing from merge tree
         Parameters
         ----------
-        edge: HDTEdge
-            The root edge in the Delaunay triangulation associated
-            to this merge tree vedge
+        etop: [HDTEdge, HDTEdge]
+            The pair of root half-edges in the Delaunay triangulation 
+            associated to this merge tree vedge.  The first element
+            should represent the half-edge on the boundary to which
+            the new triangle will be connected, while the second element
+            should be its pair on the interior of the polygon built so far
         node: MergeNode
             The merge tree node associated to this Delaunay triangle
-        Returns
-        -------
-        internal: boolean
-            Whether this edge is an external edge
         """
-        N = len(node.children)
-        if N == 0:
-            return False
-        elif not (N == 2):
+        # Step 1: Add weights based on height differences between 
+        # this node and its parent
+        for k in range(2):
+            etop[k].weight = node.parent.X[-1] - node.X[-1]
+        # Step 2: Add new vertex, triangle, and two pairs of half 
+        # edges, and update all pointers
+        if len(node.children) == 2:
+            cleft, cright = node.children[0], node.children[1]
+            if cleft.X[0] > cright.X[0]:
+                cleft, cright = cright, cleft
+            vnew = HDTVertex()
+            trinew = HDTTri()
+            trinew.h = etop[0]
+            eleft = [HDTHedge(), HDTHedge()]
+            eright = [HDTHedge(), HDTHedge()]
+            triedges = [etop, eleft, eright]
+            # Link up edges to each other and the new triangle
+            for i, edges in enumerate(triedges):
+                edges[0].face = trinew
+                edges[0].add_pair(edges[1])
+                for k in range(2):
+                    edges[k].link_next_edge(edges[(i+1)%3][k])
+            # Link up vertices and edges
+            vs = [etop[0].head, vnew, etop[1].head]
+            for i in range(3):
+                triedges[i][0].head = vs[i]
+                triedges[i][1].head = vs[(i-1)%3]
+                vs[(i-1)%3].h = triedges[i][0]
+            # Recurse on left and right subtrees
+            self.init_from_mergetree_rec(eleft, cleft)
+            self.init_from_mergetree_rec(eright, cright)
+        elif len(node.children) > 0:
             sys.stderr.write("ERROR: There are %i children a node in the merge tree"%N)
-            return False
-        cleft, cright = node.children[0], node.children[1]
-        if cleft.X[0] > cright.X[0]:
-            cleft, cright = cright, cleft
-        vnew = self.addVertex()
-        eleft = self.addEdge(edge.v1, vnew, internal=True, weight=node.X[-1]-cleft.X[-1])
-        eright = self.addEdge(vnew, edge.v2, internal=True, weight=node.X[-1]-cright.X[-1])
-        # Recurse on left and right subtrees
-        if not self.init_from_mergetree_rec(eleft, cleft):
-            eleft.internal = False
-        if not self.init_from_mergetree_rec(eright, cright):
-            eright.internal = False
-        # Add triangle corresponding to this new branch
-        self.addTriangle([edge, eleft, eright])
-        return True
+
 
 
     def init_from_mergetree(self, MT, rootweight = 1.0):
@@ -353,89 +327,49 @@ class HyperbolicDelaunay(object):
             The weight of the root edge above the root vertex in the merge tree
             (Default 1.0)
         """
-        ## Step 1: Build triangulation
-        vinf = self.addVertex(-1)
-        v0 = self.addVertex(0)
-        eroot = self.addEdge(v0, vinf, internal=False, weight=rootweight)
-        self.init_from_mergetree_rec(eroot, MT.root)
+        ## Step 1: Create first triangle
+        self.vertices = [HDTVertex(-1), HDTVertex(0), HDTVertex()]
+        tri1 = HDTTri()
+        self.faces = [tri1]
+        tri1_edges = [[HDTHedge(), HDTHedge()] for i in range(3)]
+        # Initialize all pointers properly
+        for i, [e1, e2] in range(enumerate(tri1_edges)):
+            e1.face = tri1
+            e1.add_pair(e2)
+            self.vertices[i].h = e1
+            e1.head = self.vertices[(i+1)%3]
+            self.vertices[(i+1)%3].h = e2
+            e2.head = self.vertices[i]
+            if i == 0:
+                tri1.h = e1
+                e1.weight = rootweight
+                e2.weight = rootweight
+            tri1_edges[i][0].link_next_edge(tri1_edges[(i+1)%3][0])
+            tri1_edges[i][1].link_next_edge(tri1_edges[(i-1)%3][0])
+            self.edges += [e1, e2]
 
-        ## Step 2: Figure out order of ideal vertices
-        for v in self.vertices:
-            v.visited = False
-        # First, check that every ideal vertex has exactly two internal
-        # vertices connected to it by edges
-        for v in self.vertices:
-            count = 0
-            for e in v.edges:
-                if not e.internal:
-                    count += 1
-            assert(count == 2)
-        # Now, walk around the boundary edges and label the vertices
-        vcurr = v0
-        eright = eroot
+        ## Step 2: Recursively construct the rest of the triangles
+        cleft, cright = MT.root.children[0], MT.root.children[1]
+        if cleft.X[0] > cright.X[0]:
+            cleft, cright = cright, cleft
+        tri1_edges[1].reverse()
+        self.init_from_mergetree_rec(tri1_edges[1], MT.root.children[0])
+        tri1_edges[2].reverse()
+        self.init_from_mergetree_rec(tri1_edges[2], MT.root.children[1])
+
+        ## Step 3: Figure out order of ideal vertices
+        ## by walking around the boundary edges and labeling the vertices
+        ecurr = self.edges[0] # Start at the root
         index = 0
-        self.vertices[0] = vinf
-        while not (vcurr == vinf):
-            vcurr.index = index
+        while not (ecurr == self.edges[0]):
+            ecurr.head.index = index
             index += 1
-            self.vertices[index] = vcurr
-            # Move to the next edge in CCW order
-            eright = [e for e in vcurr.edges.difference([eright]) if (not e.internal)][0]
-            vcurr = eright.vertexAcross(vcurr)
+            ecurr = ecurr.next
 
-        # Index the internal edges
-        idx = 0
+        ## Step 4: Index the internal edges
+        index = 0
         for e in self.edges:
-            if e.internal:
-                e.idx = idx
-                idx += 1
-
-    def getPathLR(self, e1, e2, left):
-        """
-        Find a path through the triangulation from the first
-        edge to the second edge, inclusive, going either
-        to the left or to the right at every step
-        Parameters
-        ----------
-        e1: HDTEdge
-            Start edge
-        e2: HDTEdge
-            End edge
-        left: boolean
-            If true, go left.  If false, go right
-        """
-        path = [e1]
-        # First try path to the left
-        face = e1.f1
-        if not face:
-            face = e1.f2
-        while face:
-            if left:
-                enext = face.getEdgeToLeft(path[-1])
-            else:
-                enext = face.getEdgeToRight(path[-1])
-            path.append(enext)
-            face = enext.faceAcross(face)
-        if path[-1] == e2:
-            return path
-        return []
-
-    def getPath(self, e1, e2):
-        """
-        Find a path through the triangulation from the first
-        edge to the second edge, inclusive
-        Parameters
-        ----------
-        e1: HDTEdge
-            Start edge
-        e2: HDTEdge
-            End edge
-        """
-        path = self.getPathLR(e1, e2, True)
-        if len(path) == 0:
-            path = self.getPathLR(e1, e2, False)
-        return path
-
+            pass
 
     def getAlpha(self, v, el, er):
         """
@@ -446,9 +380,9 @@ class HyperbolicDelaunay(object):
         ----------
         v: HDTVertex
             Center vertex
-        el: HDTEdge
+        el: HDTHedge
             Left edge
-        er: HDTEdge
+        er: HDTHedge
             Right edge
         """
         N = len(self.vertices)
