@@ -180,9 +180,10 @@ class HDTHedge(object):
         self.prev = None
         self.next = None
         self.head = None
-        self.weight = None
+        self.weight = -1
         self.internal_idx = -1
         self.is_aux = False
+        self.index = -1
     
     def link_next_edge(self, n):
         """
@@ -204,6 +205,17 @@ class HDTHedge(object):
         """
         self.pair = other
         other.pair = self
+    
+    def get_vertices(self):
+        """
+        Return the two vertices that are on this edge
+        Returns
+        -------
+        vertices: [HDTVertex, HDTVertex]
+            List of vertices in CCW order along edge
+        """
+        return [self.prev.head, self.head]
+
 
 
 
@@ -236,7 +248,7 @@ class HDTTri(object):
     def __init__(self):
         self.h = None
     
-    def getVertices(self):
+    def get_vertices(self):
         """
         Return a list of the HDTVertex objects that 
         make up this triangle
@@ -251,6 +263,22 @@ class HDTTri(object):
             vertices.append(edge.head)
             edge = edge.next
         return vertices
+    
+    def get_edges(self):
+        """
+        Return a list of the HDTVertex objects that 
+        make up this triangle
+        Returns
+        -------
+        edges: list of [HDTHedge]
+            List of half-edges with this triangle to the left
+        """
+        edges = [self.h]
+        edge = self.h.next
+        while not (edge == self.h):
+            edges.append(edge)
+            edge = edge.next
+        return edges
         
 
 class HyperbolicDelaunay(object):
@@ -289,17 +317,24 @@ class HyperbolicDelaunay(object):
             if cleft.X[0] > cright.X[0]:
                 cleft, cright = cright, cleft
             vnew = HDTVertex()
+            self.vertices.append(vnew)
             trinew = HDTTri()
             trinew.h = etop[0]
+            self.triangles.append(trinew)
             eleft = [HDTHedge(), HDTHedge()]
             eright = [HDTHedge(), HDTHedge()]
+            self.edges += eleft + eright
             triedges = [etop, eleft, eright]
+            prevbefore = etop[0].prev
+            nextbefore = etop[0].next
             # Link up edges to each other and the new triangle
             for i, edges in enumerate(triedges):
                 edges[0].face = trinew
                 edges[0].add_pair(edges[1])
-                for k in range(2):
-                    edges[k].link_next_edge(edges[(i+1)%3][k])
+                edges[0].link_next_edge(triedges[(i+1)%3][0])
+            prevbefore.link_next_edge(eright[1])
+            eright[1].link_next_edge(eleft[1])
+            eleft[1].link_next_edge(nextbefore)
             # Link up vertices and edges
             vs = [etop[0].head, vnew, etop[1].head]
             for i in range(3):
@@ -307,7 +342,9 @@ class HyperbolicDelaunay(object):
                 triedges[i][1].head = vs[(i-1)%3]
                 vs[(i-1)%3].h = triedges[i][0]
             # Recurse on left and right subtrees
+            eleft.reverse()
             self.init_from_mergetree_rec(eleft, cleft)
+            eright.reverse()
             self.init_from_mergetree_rec(eright, cright)
         elif len(node.children) > 0:
             sys.stderr.write("ERROR: There are %i children a node in the merge tree"%N)
@@ -330,10 +367,11 @@ class HyperbolicDelaunay(object):
         ## Step 1: Create first triangle
         self.vertices = [HDTVertex(-1), HDTVertex(0), HDTVertex()]
         tri1 = HDTTri()
-        self.faces = [tri1]
+        self.triangles = [tri1]
+        self.edges = []
         tri1_edges = [[HDTHedge(), HDTHedge()] for i in range(3)]
         # Initialize all pointers properly
-        for i, [e1, e2] in range(enumerate(tri1_edges)):
+        for i, [e1, e2] in enumerate(tri1_edges):
             e1.face = tri1
             e1.add_pair(e2)
             self.vertices[i].h = e1
@@ -345,7 +383,7 @@ class HyperbolicDelaunay(object):
                 e1.weight = rootweight
                 e2.weight = rootweight
             tri1_edges[i][0].link_next_edge(tri1_edges[(i+1)%3][0])
-            tri1_edges[i][1].link_next_edge(tri1_edges[(i-1)%3][0])
+            tri1_edges[i][1].link_next_edge(tri1_edges[(i-1)%3][1])
             self.edges += [e1, e2]
 
         ## Step 2: Recursively construct the rest of the triangles
@@ -353,23 +391,28 @@ class HyperbolicDelaunay(object):
         if cleft.X[0] > cright.X[0]:
             cleft, cright = cright, cleft
         tri1_edges[1].reverse()
-        self.init_from_mergetree_rec(tri1_edges[1], MT.root.children[0])
+        self.init_from_mergetree_rec(tri1_edges[1], cleft)
         tri1_edges[2].reverse()
-        self.init_from_mergetree_rec(tri1_edges[2], MT.root.children[1])
+        self.init_from_mergetree_rec(tri1_edges[2], cright)
 
         ## Step 3: Figure out order of ideal vertices
         ## by walking around the boundary edges and labeling the vertices
-        ecurr = self.edges[0] # Start at the root
         index = 0
-        while not (ecurr == self.edges[0]):
+        ecurr = self.edges[1].prev
+        while not (ecurr == self.edges[1]):
             ecurr.head.index = index
             index += 1
-            ecurr = ecurr.next
+            ecurr = ecurr.prev
 
         ## Step 4: Index the internal edges
         index = 0
         for e in self.edges:
-            pass
+            if e.face and e.pair.face and (e.internal_idx == -1):
+                e.internal_idx = index
+                e.is_aux = True
+                e.pair.internal_idx = index
+                e.pair.is_aux = False
+                index += 1
 
     def getAlpha(self, v, el, er):
         """
@@ -426,29 +469,29 @@ class HyperbolicDelaunay(object):
             else:
                 plt.text(Xs[i, 0], Xs[i, 1], "%i"%(i-1))
         for edge in self.edges:
-            v1, v2 = edge.v1, edge.v2
+            v1, v2 = edge.head, edge.prev.head
             x = Xs[v1.index+1, :]
             y = Xs[v2.index+1, :]
             plt.plot([x[0], y[0]], [x[1], y[1]])
             x = 0.5*(x + y)
             s = "%.3g"%edge.weight
-            if edge.internal:
-                s = "%s (%i)"%(s, edge.idx)
+            if edge.internal_idx > -1:
+                s = "%s (%i)"%(s, edge.internal_idx)
             plt.text(x[0], x[1], s)
         
         ## Step 2: Draw tree inside of triangulation
         for T in self.triangles:
-            vs = T.getVertices()
+            vs = T.get_vertices()
             vidxs = np.array([v.index+1 for v in vs])
             c1 = np.mean(Xs[vidxs, :], 0)
             plt.scatter(c1[0], c1[1], 60, 'k')
-            for e in T.edges:
-                T2 = e.faceAcross(T)
+            for e in T.get_edges():
+                T2 = e.pair.face
                 if T2:
-                    idxs = np.array([v.index+1 for v in T2.getVertices()])
+                    idxs = np.array([v.index+1 for v in T2.get_vertices()])
                     c2 = np.mean(Xs[idxs, :], 0)
                 else:
-                    idxs = np.array([e.v1.index+1, e.v2.index+1])
+                    idxs = np.array([v.index+1 for v in e.get_vertices()])
                     c2 = np.mean(Xs[idxs, :], 0)
                     plt.scatter(c2[0], c2[1], 60, 'k')
                 plt.plot([c1[0], c2[0]], [c1[1], c2[1]], 'k')
@@ -478,14 +521,6 @@ if __name__ == '__main__':
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
-
-    hd.getEquations()
-
-    e1 = hd.getEdge(hd.vertices[0], hd.vertices[1])
-    e2 = hd.getEdge(hd.vertices[1], hd.vertices[2])
-    path = hd.getPath(e1, e2)
-    for e in path:
-        print("%i <---> %i"%(e.v1.index, e.v2.index))
 
     plt.subplot(121)
     T.render(offset=np.array([0, 0]))
