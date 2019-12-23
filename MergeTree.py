@@ -24,7 +24,7 @@ def TotalOrder2DX(N1, N2):
 def PartialOrder3DXY(N1, N2):
     """
     For trees build on functions over R2 (such as SSMs)
-    #which live in 3D, use the domain to create a partial
+    which live in 3D, use the domain to create a partial
     order
     """
     [X1, Y1] = [N1.X[0], N1.X[1]]

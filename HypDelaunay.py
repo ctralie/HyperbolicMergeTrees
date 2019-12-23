@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import sys
 from heapq import heappush, heappop
 from MergeTree import *
+from GeomTools import *
 
 def getvals(xs, ws, idxs):
     """
@@ -163,10 +164,8 @@ class HDTHedge(object):
     next: HDTHedge
         The next half-edge in CCW order
 
-    weight: float
-        Weight of the vedge that crosses this edge if it's
-        an internal edge, or weight of the leaf vedge that terminates
-        on this edge if it's a boundary edge
+    index: int
+        Index of the full edge that this half-edge is part of
     internal_idx: int
         Index of the internal edge (or -1 if it is an external edge)
     is_aux: boolean
@@ -180,10 +179,9 @@ class HDTHedge(object):
         self.prev = None
         self.next = None
         self.head = None
-        self.weight = -1
+        self.index = -1
         self.internal_idx = -1
         self.is_aux = False
-        self.index = -1
     
     def link_next_edge(self, n):
         """
@@ -286,11 +284,24 @@ class HyperbolicDelaunay(object):
     The object that stores all half-edges, faces,
     and vertices of the triangulation, as well as
     functions to help initialize it
+
+    Attributes
+    ----------
+    vertices: list of HDTVertex
+        An unordered list of vertices
+    edges: list of HDTHedge
+        An unordered list of half-edges
+    triangles: list of HDTTriangle
+        An unordered list of triangles
+    weight_dict: {int: float}
+        A dictionary to convert from an edge
+        index to the weight of the edge
     """
     def __init__(self):
         self.vertices = []
         self.edges = []
         self.triangles = []
+        self.weight_dict = {}
     
     def init_from_mergetree_rec(self, etop, node):
         """
@@ -308,8 +319,10 @@ class HyperbolicDelaunay(object):
         """
         # Step 1: Add weights based on height differences between 
         # this node and its parent
+        index = len(self.weight_dict)
+        self.weight_dict[index] = node.parent.X[-1] - node.X[-1]
         for k in range(2):
-            etop[k].weight = node.parent.X[-1] - node.X[-1]
+            etop[k].index = index
         # Step 2: Add new vertex, triangle, and two pairs of half 
         # edges, and update all pointers
         if len(node.children) == 2:
@@ -380,8 +393,9 @@ class HyperbolicDelaunay(object):
             e2.head = self.vertices[i]
             if i == 0:
                 tri1.h = e1
-                e1.weight = rootweight
-                e2.weight = rootweight
+                self.weight_dict[0] = rootweight
+                e1.index = 0
+                e2.index = 0
             tri1_edges[i][0].link_next_edge(tri1_edges[(i+1)%3][0])
             tri1_edges[i][1].link_next_edge(tri1_edges[(i-1)%3][1])
             self.edges += [e1, e2]
@@ -448,14 +462,19 @@ class HyperbolicDelaunay(object):
 
 
 
-    def render(self):
+    def render(self, symbolic=True):
         """
         Render a regular convex polygon depicting the triangulation
         and its dual.  Number the vertices and indicate the weights
         associated to each edge
+        Parameters
+        ----------
+        symbolic: boolean
+            If true, write variables for the edge weights
+            If false, use the actual floating point edge lengths
         """
         N = len(self.vertices)
-        ## Step 1: Draw triangulation
+        ## Step 1: Draw the polygon
         # Draw 0 and infinity at the top
         dTheta = 2*np.pi/N
         theta0 = np.pi/2 - dTheta/2
@@ -468,33 +487,57 @@ class HyperbolicDelaunay(object):
                 plt.text(Xs[i, 0], Xs[i, 1], "$\\infty$")
             else:
                 plt.text(Xs[i, 0], Xs[i, 1], "%i"%(i-1))
-        for edge in self.edges:
-            v1, v2 = edge.head, edge.prev.head
-            x = Xs[v1.index+1, :]
-            y = Xs[v2.index+1, :]
-            plt.plot([x[0], y[0]], [x[1], y[1]])
-            x = 0.5*(x + y)
-            s = "%.3g"%edge.weight
-            if edge.internal_idx > -1:
-                s = "%s (%i)"%(s, edge.internal_idx)
-            plt.text(x[0], x[1], s)
         
-        ## Step 2: Draw tree inside of triangulation
+        ## Step 2: Draw the triangulation and the 
+        ##         tree inside of triangulation
+        edge_drawn = [False]*int(len(self.edges)/2)
         for T in self.triangles:
             vs = T.get_vertices()
             vidxs = np.array([v.index+1 for v in vs])
             c1 = np.mean(Xs[vidxs, :], 0)
             plt.scatter(c1[0], c1[1], 60, 'k')
             for e in T.get_edges():
-                T2 = e.pair.face
-                if T2:
-                    idxs = np.array([v.index+1 for v in T2.get_vertices()])
-                    c2 = np.mean(Xs[idxs, :], 0)
-                else:
-                    idxs = np.array([v.index+1 for v in e.get_vertices()])
-                    c2 = np.mean(Xs[idxs, :], 0)
+                if not edge_drawn[e.index]:
+                    edge_drawn[e.index] = True
+                    # Draw edge on triangle
+                    v1, v2 = e.head, e.prev.head
+                    xedge = Xs[[v1.index+1, v2.index+1], :]
+                    plt.plot(xedge[:, 0], xedge[:, 1], c='C1')
+                    # Draw edge on tree
+                    T2 = e.pair.face
+                    if T2:
+                        idxs = np.array([v.index+1 for v in T2.get_vertices()])
+                        c2 = np.mean(Xs[idxs, :], 0)
+                    else:
+                        idxs = np.array([v.index+1 for v in e.get_vertices()])
+                        c2 = np.mean(Xs[idxs, :], 0)
                     plt.scatter(c2[0], c2[1], 60, 'k')
-                plt.plot([c1[0], c2[0]], [c1[1], c2[1]], 'k')
+                    xtree = np.array([c1, c2])
+                    plt.plot(xtree[:, 0], xtree[:, 1], 'k')
+                    # Draw text for weights and auxiliary variables
+                    weight = self.weight_dict[e.index]
+                    s1 = "$w_{%i}$"%e.index
+                    if not symbolic:
+                        s1 = "%.3g"%weight
+                    if e.internal_idx == -1:
+                        xtree = np.mean(xtree, 0)
+                        plt.text(xtree[0], xtree[1], s1)
+                    else:
+                        saux = "$x_{%i}$"%e.internal_idx
+                        sother = "%s - %s"%(s1, saux)
+                        xint = intersectSegments2D(xedge, xtree)
+                        plt.scatter(xint[0], xint[1], 10, c='k')
+                        for c, aux in zip([c1, c2], [e.is_aux, not e.is_aux]):
+                            xcenter = np.array([c, xint])
+                            xcenter = np.mean(xcenter, 0)
+                            if aux:
+                                s = saux
+                            else:
+                                s = sother
+                            plt.text(xcenter[0], xcenter[1], s)
+
+
+        plt.axis('off')
 
 
 if __name__ == '__main__':
