@@ -213,6 +213,15 @@ class HDTHedge(object):
             List of vertices in CCW order along edge
         """
         return [self.prev.head, self.head]
+    
+    def __str__(self):
+        """
+        Return a string with the indices of the edge
+        and the vertices this half-edge goes between
+        """
+        v1, v2 = self.get_vertices()
+        s = "HDTEdge(%i) from %i to %i"%(self.index, v1.index, v2.index)
+        return s
 
 
 
@@ -427,39 +436,48 @@ class HyperbolicDelaunay(object):
                 e.pair.internal_idx = index
                 e.pair.is_aux = False
                 index += 1
-
-    def getAlpha(self, v, el, er):
-        """
-        Return the affine function of the internal edge lengths
-        that gives rise to the horo arc length between two edges
-        centered at a vertex
-        Parameters
-        ----------
-        v: HDTVertex
-            Center vertex
-        el: HDTHedge
-            Left edge
-        er: HDTHedge
-            Right edge
-        """
-        N = len(self.vertices)
-        a = 0.0
-        deltas = np.zeros(N-3)
-        # TODO: Finish this
-
-    def getEquations(self):
+    
+    def get_equations(self):
         """
         Return all of the information that's needed to setup equations
         """
-        for i, v in enumerate(self.vertices):
-            vidx = v.index
-            edges = list(v.edges)
-            v2idxs = np.array([e.vertexAcross(v).index for e in edges])
-            
-            for v2 in v2idxs:
-                print("%i, %i"%(vidx, v2))
-            print("\n\n")
-
+        e1 = self.edges[0]
+        N = len(self.vertices)
+        equations = []
+        for index in range(N):
+            e2 = e1.next
+            # Figure out the vertex index at the head
+            # of the last edge
+            next_index = index + 1
+            if next_index == N-1:
+                next_index = -1
+            elif next_index == N:
+                next_index = 0
+            # Figure out the edges that are involved
+            e2s = [e2]
+            uidxs = [e1.index]
+            while not (e2.head.index == next_index):
+                e2 = e2.pair.next
+                e2s.append(e2)
+            for e2 in e2s:
+                vs = {}
+                if e2.internal_idx == -1:
+                    uidxs.append(e2.index)
+                else:
+                    if e2.is_aux:
+                        vs[e2.internal_idx] = 1
+                    else:
+                        uidxs.append(e2.index)
+                        vs[e2.internal_idx] = -1
+                if index == N-1:
+                    index = -1
+                eq = {'w':e1.prev.head.index, 'x':index, 'y':e2.head.index, 'uidxs':uidxs[::], 'vs':vs}
+                equations.append(eq)
+                if (e2.internal_idx > -1) and e2.is_aux:
+                    # The full edge will be used in the next equation
+                    uidxs.append(e2.index)
+            e1 = e2
+        return equations
 
 
     def render(self, symbolic=True):
@@ -516,14 +534,14 @@ class HyperbolicDelaunay(object):
                     plt.plot(xtree[:, 0], xtree[:, 1], 'k')
                     # Draw text for weights and auxiliary variables
                     weight = self.weight_dict[e.index]
-                    s1 = "$w_{%i}$"%e.index
+                    s1 = "$u_{%i}$"%e.index
                     if not symbolic:
                         s1 = "%.3g"%weight
                     if e.internal_idx == -1:
                         xtree = np.mean(xtree, 0)
                         plt.text(xtree[0], xtree[1], s1)
                     else:
-                        saux = "$x_{%i}$"%e.internal_idx
+                        saux = "$v_{%i}$"%e.internal_idx
                         sother = "%s - %s"%(s1, saux)
                         xint = intersectSegments2D(xedge, xtree)
                         plt.scatter(xint[0], xint[1], 10, c='k')
@@ -535,9 +553,52 @@ class HyperbolicDelaunay(object):
                             else:
                                 s = sother
                             plt.text(xcenter[0], xcenter[1], s)
-
-
         plt.axis('off')
+    
+    def get_equations_tex(self, symbolic=True):
+        """
+        Return tex code for the equations that come from this triangulation
+        Parameters
+        ----------
+        symbolic: boolean
+            If true, write variables for the edge weights
+            If false, use the actual floating point edge lengths
+        """
+        equations_str = "$r_{\infty} = \infty$\n$x_{\infty}=\infty$\n$x_0=0$\n"
+        for eq in self.get_equations():
+            w, x, y, uidxs, vs = eq['w'], eq['x'], eq['y'], eq['uidxs'], eq['vs']
+            s = "$"
+            alpha_str = ""
+            for i, u in enumerate(uidxs):
+                if symbolic:
+                    alpha_str += "u_{%i}"%u
+                else:
+                    alpha_str += "%.3g"%self.weight_dict[u]
+                if i < len(uidxs) - 1:
+                    alpha_str += " + "
+            for v in vs:
+                if vs[v] > 0:
+                    alpha_str += " + "
+                else:
+                    alpha_str += " - "
+                alpha_str += "v_{%i}"%v
+            if w == -1:
+                # Case 2
+                s += "r_{%i} = (%s)(z_{%i}-z_{%i})"%(x, alpha_str, y, x)
+            elif y == -1:
+                # Case 3
+                s += "r_{%i} = (%s)(z_{%i}-z_{%i})"%(x, alpha_str, x, w)
+            elif x == -1:
+                # Case 4
+                s += "r_{\infty}(%s) = (z_{%i}-z_{%i})"%(alpha_str, y, w)
+            else:
+                s += "r_{%i}(z_{%i}-z_{%i}) = ("%(x, y, w)
+                s += alpha_str
+                s += ")(z_{%i}-z_{%i})(z_{%i}-z_{%i})"%(x, w, y, x)
+            equations_str += s + "$\n"
+        return equations_str
+        
+
 
 
 if __name__ == '__main__':
@@ -564,9 +625,20 @@ if __name__ == '__main__':
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
+    symbolic=False
 
-    plt.subplot(121)
+    plt.figure(figsize=(18, 6))
+    plt.subplot(131)
     T.render(offset=np.array([0, 0]))
-    plt.subplot(122)
-    hd.render()
-    plt.show()
+    plt.title("Merge Tree")
+    plt.subplot(132)
+    hd.render(symbolic=symbolic)
+    plt.title("Topological Triangulation")
+    plt.subplot(133)
+    plt.text(0, 0, hd.get_equations_tex(symbolic=symbolic))
+    plt.axis('off')
+    plt.title("Hyperbolic Equations")
+    filename = "%iGon.svg"%len(hd.vertices)
+    if symbolic:
+        filename = "%iGon_symbolic.svg"%len(hd.vertices)
+    plt.savefig(filename, bbox_inches='tight')

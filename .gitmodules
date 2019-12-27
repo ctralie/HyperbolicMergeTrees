@@ -1,0 +1,3 @@
+[submodule "norm_ideal_ngons"]
+	path = norm_ideal_ngons
+	url = https://github.com/ctralie/norm_ideal_ngons.git
