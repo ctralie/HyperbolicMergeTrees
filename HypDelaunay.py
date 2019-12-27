@@ -8,6 +8,7 @@ import scipy.optimize as opt
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
+import time
 from heapq import heappush, heappop
 from MergeTree import *
 from GeomTools import *
@@ -422,13 +423,13 @@ class HyperbolicDelaunay(object):
         if eq['x'] > -1:
             r = rs[eq['x']]
         w, x, y = self.get_zvals(eq, zs, x0)
-        if not w:
+        if w is None:
             # Case 2
             res = (r - alpha*(y-x))**2
-        elif not y:
+        elif y is None:
             # Case 3
             res = (r - alpha*(x-w))**2
-        elif not x:
+        elif x is None:
             # Case 4
             res = (rinf*alpha - y + w)**2
         else:
@@ -454,7 +455,7 @@ class HyperbolicDelaunay(object):
         """
         N = len(self.vertices)
         zs = x[0:N-2]
-        rs = x[N-2:N-2+N-3]
+        rs = x[N-2:N-2+N-1]
         vs = x[-(N-3)::]
         return zs, rs, vs
 
@@ -505,13 +506,9 @@ class HyperbolicDelaunay(object):
         res = opt.minimize(self.f, x_initial, args = (equations, x0, rinf), method='BFGS')#, jac=gradf)
         x_sol = res['x']
         zs, rs, vs = self.unpack_variables(x_sol)
-        if verbose:
-            print("f(x_initial) = ", self.f(x_initial, equations, x0, rinf))
-            print("f(x_sol) = ", self.f(x_sol, equations, x0, rinf))
-            print("zs = ", zs)
-            print("rs = ", rs)
-            print("vs = ", vs)
-        return zs, rs, vs
+        fx_initial = self.f(x_initial, equations, x0, rinf)
+        fx_sol = self.f(x_sol, equations, x0, rinf)
+        return {'zs':zs, 'rs':rs, 'vs':vs, 'fx_initial':fx_initial, 'fx_sol':fx_sol}
 
     def render(self, symbolic=True):
         """
@@ -659,12 +656,6 @@ if __name__ == '__main__':
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
     symbolic=True
-
-    N = len(hd.vertices)
-    zs0 = np.arange(N-2)+1
-    rs0 = np.ones(N-1)*1
-    vs0 = np.zeros(N-3)
-    hd.solve_equations(zs0, rs0, vs0)
 
     plt.figure(figsize=(18, 6))
     plt.subplot(131)
