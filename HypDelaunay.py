@@ -12,143 +12,10 @@ from heapq import heappush, heappop
 from MergeTree import *
 from GeomTools import *
 
-def getvals(xs, ws, idxs):
-    """
-    Helper function for f and gradf
-    """
-    xs_ws = np.concatenate((xs, ws))
-    x = xs_ws[idxs[0]]
-    others = np.zeros(5)
-    for i, idx in enumerate(idxs[1::]):
-        if type(idx) == list:
-            others[i] = xs_ws[idx[1]] - xs_ws[idx[0]]
-        else:
-            others[i] = xs_ws[idx]
-    [a, b, c, d, e] = others.tolist()
-    return [x, a, b, c, d, e]
-
-def f(xs, ws, idxs):
-    """
-    Set up an objective function for satisfying a particular equation
-
-    Parameters
-    ----------
-    xs: ndarray(n)
-        Current estimate of the partial weights
-    ws: ndarray(n*2 + 3)
-        Weights of the tree edges
-    idxs: list(6) indexing into (n*3+3)
-        Indexes into xs and ws specifying which quantities are involved
-        in this equation.  xs are indexed first, followed by ws.
-        The order is x, a, b, c, d, e
-        If it is a 2-element list, then it is ws_xs[1] - ws_xs[0] = k - x
-        for some merge tree edge length k and a variable x
-    
-    Returns
-    -------
-    f(xs): int
-        The evaluation of the function
-    """
-    [x, a, b, c, d, e] = getvals(xs, ws, idxs)
-    return (a+x)*(b+x) - (c-x+d)*(c-x+e)
-
-def gradf(xs, ws, idxs):
-    """
-    The gradient of an objective function for satisfiability of a particular equation
-    at a point, with respect to all of the xs
-    Parameters
-    ----------
-    xs: ndarray(n)
-        Current estimate of the partial weights
-    ws: ndarray(n*2 + 3)
-        Weights of the tree edges
-    idxs: list(6) indexing into (n*3+3)
-        Indexes into xs and ws specifying which quantities are involved
-        in this equation.  xs are indexed first, followed by ws.
-        The order is x, a, b, c, d, e
-        If it is a 2-element list, then it is ws_xs[1] - ws_xs[0] = k - x
-        for some merge tree edge length k and a variable x
-    
-    Returns
-    -------
-    grad(xs): ndarray(n)
-        Gradient at the point xs
-    """
-    grad = np.zeros(len(xs))
-    vals = getvals(xs, ws, idxs)
-    [x, a, b, c, d, e] = vals
-    N = len(xs)
-    grad[idxs[0]] = a + b + 2*c + d + e
-    coeffweight = [1, 1, -1, -1]
-    for coeffweight, elem, idx in zip([1, 1, -1, -1], [b, a, e, c+d], [idxs[i] for i in [1, 2, 4, 5]]):
-        if type(idx) == list:
-            grad[idx[0]] = -x - coeffweight*elem
-        else:
-            if idx < N:
-                grad[idx] = x + coeffweight*elem
-    return grad
-
-def g(xs, ws, allidxs):
-    """
-    Return the objective function 0.5*[ sum_i f_i(x)^2 ]
-    Parameters
-    ----------
-    xs: ndarray(n)
-        Current estimate of the partial weights
-    ws: ndarray(n*2 + 3)
-        Weights of the tree edges
-    idxs: list (num equations)
-        A list of all of the equation index lists, as specified for f and gradf    
-    Returns
-    -------
-    g(xs): float
-        Value of the objective function at the point xs
-    """
-    res = 0.0
-    for idxs in allidxs:
-        res += f(xs, ws, idxs)**2
-    return 0.5*res
-
-def gradg(xs, ws, allidxs):
-    """
-    Return the gradient of the objective function 0.5*[ sum_i f_i(x)^2 ]
-    Parameters
-    ----------
-    xs: ndarray(n)
-        Current estimate of the partial weights
-    ws: ndarray(n*2 + 3)
-        Weights of the tree edges
-    idxs: list (num equations)
-        A list of all of the equation index lists, as specified for f and gradf    
-    Returns
-    -------
-    gradg(xs): ndarray(n)
-        Value of the gradient of g at the point xs
-    """
-    res = np.zeros(xs.size)
-    for idxs in allidxs:
-        res += f(xs, ws, idxs)*gradf(xs, ws, idxs)
-    return res
-
-def solvesystem(x0, ws, allidxs, verbose=False):
-    res = opt.minimize(g, x0, args = (ws, allidxs), method='BFGS', jac=gradg)
-    xsol = res['x']
-    if verbose:
-        print("g(x0) = ", g(x0, ws, allidxs))
-        print("xsol = ", xsol)
-        print("g(xsol) = ", g(xsol, ws, allidxs))
-    return xsol
-
-
-
-
 """
 Half-edge data structure for handling Delaunay triangulations of an 
 arrangement of ideal hyperbolic vertices
 """
-
-
-    
 class HDTHedge(object):
     """
     A class for storing an ideal hyperbolic Delaunay Triangulation half-edge
@@ -371,8 +238,6 @@ class HyperbolicDelaunay(object):
         elif len(node.children) > 0:
             sys.stderr.write("ERROR: There are %i children a node in the merge tree"%N)
 
-
-
     def init_from_mergetree(self, MT, rootweight = 1.0):
         """
         Initialize this structure based on geometrically realized chiral 
@@ -440,6 +305,16 @@ class HyperbolicDelaunay(object):
     def get_equations(self):
         """
         Return all of the information that's needed to setup equations
+        Returns
+        -------
+        equations: list of dict{
+            'w': z index of the w point (or -1 if infinity),
+            'x': z index of the x point (or -1 if infinity),
+            'y': z index of the y point (or -1 if infinity),
+            'uidxs': list of indices into to the weight dictionary
+                    for constant weights involved in this edge,
+            'vs': {Index of v variable: coefficient of v variable}
+        }
         """
         e1 = self.edges[0]
         N = len(self.vertices)
@@ -478,7 +353,165 @@ class HyperbolicDelaunay(object):
                     uidxs.append(e2.index)
             e1 = e2
         return equations
+    
+    def get_zvals(self, eq, zs, x0=0):
+        """
+        Given the default z coordinate of x0 and
+        the rest of the N-1 z coordinates, return
+        the actual coordinates of w, x, and y, or
+        None if they happen to be infinity
 
+        Parameters
+        ----------
+        eq: Dictionary
+            A dictionary element returned by self.get_equations()
+        zs: ndarray(N-2)
+            X coordinates of the zs, excluding z_{\infty} and z0
+        x0: float
+            Default value of x0
+        Returns
+        -------
+        w: float
+            x coordinate of w
+        x: float
+            x coordinate of x
+        y: float
+            x coordinate of y
+        """
+        vals = [None, None, None]
+        for i, zidx in enumerate([eq['w'], eq['x'], eq['y']]):
+            if zidx == 0:
+                vals[i] = x0
+            elif zidx > 0:
+                vals[i] = zs[zidx-1]
+        return vals[0], vals[1], vals[2]
+
+    def fi(self, eq, zs, rs, vs, x0=0, rinf = 1):
+        """
+        Set up an objective function for satisfying a particular equation
+        Parameters
+        ----------
+        eq: Dictionary
+            A dictionary element returned by self.get_equations()
+        zs: ndarray(N-2)
+            X coordinates of the zs, excluding z_{\infty} and z0
+        rs: ndarray(N-1)
+            R values of everything excuting r_{\infty}
+        vs: ndarray(N-3)
+            Values of internal edge auxiliary variables
+        x0: float
+            Default value of x0
+        rinf: float
+            Default value of r_{\infty}
+        Returns
+        -------
+        {'res': fi(zs, rs, vs): float
+            The evaluation of the function,
+         'alpha': float
+            alpha as a biproduct, which can be reused for the gradient}
+        """
+        alpha = 0
+        for u in eq['uidxs']:
+            alpha += self.weight_dict[u]
+        for v in eq['vs']:
+            coeff = eq['vs'][v]
+            alpha += coeff*vs[v]
+        res = 0
+        uidxs, vs = eq['uidxs'], eq['vs']
+        r = rinf
+        if eq['x'] > -1:
+            r = rs[eq['x']]
+        w, x, y = self.get_zvals(eq, zs, x0)
+        if not w:
+            # Case 2
+            res = (r - alpha*(y-x))**2
+        elif not y:
+            # Case 3
+            res = (r - alpha*(x-w))**2
+        elif not x:
+            # Case 4
+            res = (rinf*alpha - y + w)**2
+        else:
+            # Case 1
+            res = (r*(y-w) - alpha*(x-w)*(y-x))**2
+        return {'res':res, 'alpha':alpha}
+
+    def unpack_variables(self, x):
+        """
+        Unpack the 3N-6 variables into zs, rs, and vs
+        Parameters
+        ----------
+        x: ndarray(3N-6)
+            A concatenation of [zs(N-2), rs(N-1), vs(N-3)]
+        Returns
+        -------
+        zs: ndarray(N-2)
+            z positions
+        rs: ndarray(N-1)
+            Radii
+        vs: ndarray(N-3)
+            Auxiliary variables
+        """
+        N = len(self.vertices)
+        zs = x[0:N-2]
+        rs = x[N-2:N-2+N-3]
+        vs = x[-(N-3)::]
+        return zs, rs, vs
+
+    def f(self, x, equations, x0=0, rinf=1):
+        """
+        Return the objective function sum_i f_i(x)
+        Parameters
+        ----------
+        x: ndarray(3*N-6)
+            Current estimate of all variables; a concatenation of
+            [zs(N-2), rs(N-1), vs(N-3)]
+        equations: dict
+            Equations returned by self.get_equations()
+        x0: float
+            Default value of x0
+        rinf: float
+            Default value of r_{\infty}
+        Returns
+        -------
+        res: float
+            An evaluation of f with the given variables
+        """
+        res = 0.0
+        zs, rs, vs = self.unpack_variables(x)
+        for eq in equations:
+            res += self.fi(eq, zs, rs, vs, x0, rinf)['res']
+        return 0.5*res
+
+    def solve_equations(self, zs0, rs0, vs0, x0=0, rinf=1, verbose=False):
+        """
+        Solve for the zs, rs, and auxiliary variables vs which
+        give rise to the merge tree with this topology and weights
+        Parameters
+        ----------
+        zs0: ndarray(N-2)
+            X coordinates of the initial zs, excluding z_{\infty} and z0
+        rs0: ndarray(N-1)
+            R values of the initial rs, excluding r_{\infty}
+        vs0: ndarray(N-3)
+            Initial values of internal edge auxiliary variables
+        x0: float
+            Default value of x0
+        rinf: float
+            Default value of r_{\infty}
+        """
+        x_initial = np.concatenate([zs0, rs0, vs0])
+        equations = self.get_equations()
+        res = opt.minimize(self.f, x_initial, args = (equations, x0, rinf), method='BFGS')#, jac=gradf)
+        x_sol = res['x']
+        zs, rs, vs = self.unpack_variables(x_sol)
+        if verbose:
+            print("f(x_initial) = ", self.f(x_initial, equations, x0, rinf))
+            print("f(x_sol) = ", self.f(x_sol, equations, x0, rinf))
+            print("zs = ", zs)
+            print("rs = ", rs)
+            print("vs = ", vs)
+        return zs, rs, vs
 
     def render(self, symbolic=True):
         """
@@ -564,7 +597,7 @@ class HyperbolicDelaunay(object):
             If true, write variables for the edge weights
             If false, use the actual floating point edge lengths
         """
-        equations_str = "$r_{\infty} = \infty$\n$x_{\infty}=\infty$\n$x_0=0$\n"
+        equations_str = "$r_{\infty} = 1$\n$z_{\infty}=\infty$\n$z_0=0$\n"
         for eq in self.get_equations():
             w, x, y, uidxs, vs = eq['w'], eq['x'], eq['y'], eq['uidxs'], eq['vs']
             s = "$"
@@ -625,7 +658,13 @@ if __name__ == '__main__':
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
-    symbolic=False
+    symbolic=True
+
+    N = len(hd.vertices)
+    zs0 = np.arange(N-2)+1
+    rs0 = np.ones(N-1)*1
+    vs0 = np.zeros(N-3)
+    hd.solve_equations(zs0, rs0, vs0)
 
     plt.figure(figsize=(18, 6))
     plt.subplot(131)
