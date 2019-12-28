@@ -427,16 +427,16 @@ class HyperbolicDelaunay(object):
         w, x, y = self.get_zvals(eq, zs, x0)
         if w is None:
             # Case 2
-            res = (r - alpha*(y-x))**2
+            res = (r - alpha*abs(y-x))**2
         elif y is None:
             # Case 3
-            res = (r - alpha*(x-w))**2
+            res = (r - alpha*abs(x-w))**2
         elif x is None:
             # Case 4
-            res = (rinf*alpha - y + w)**2
+            res = (rinf*alpha - abs(y-w))**2
         else:
             # Case 1
-            res = (r*(y-w) - alpha*(x-w)*(y-x))**2
+            res = (r*abs(y-w) - alpha*abs(x-w)*abs(y-x))**2
         return {'res':res, 'alpha':alpha}
 
     def unpack_variables(self, x):
@@ -597,6 +597,10 @@ class HyperbolicDelaunay(object):
             If false, use the actual floating point edge lengths
         """
         equations_str = "$r_{\infty} = 1$\n$z_{\infty}=\infty$\n$z_0=0$\n"
+        def ij2diff(i, j):
+            if i < j:
+                j, i = i, j
+            return "(z_{%i} - z_{%i})"%(i, j)
         for eq in self.get_equations():
             w, x, y, uidxs, vs = eq['w'], eq['x'], eq['y'], eq['uidxs'], eq['vs']
             s = "$"
@@ -616,17 +620,17 @@ class HyperbolicDelaunay(object):
                 alpha_str += "v_{%i}"%v
             if w == -1:
                 # Case 2
-                s += "r_{%i} = (%s)(z_{%i}-z_{%i})"%(x, alpha_str, y, x)
+                s += "r_{%i} = (%s)%s"%(x, alpha_str, ij2diff(y, x))
             elif y == -1:
                 # Case 3
-                s += "r_{%i} = (%s)(z_{%i}-z_{%i})"%(x, alpha_str, x, w)
+                s += "r_{%i} = (%s)%s"%(x, alpha_str, ij2diff(x, w))
             elif x == -1:
                 # Case 4
-                s += "r_{\infty}(%s) = (z_{%i}-z_{%i})"%(alpha_str, y, w)
+                s += "r_{\infty}(%s) = %s"%(alpha_str, ij2diff(y, w))
             else:
-                s += "r_{%i}(z_{%i}-z_{%i}) = ("%(x, y, w)
+                s += "r_{%i}%s = ("%(x, ij2diff(y, w))
                 s += alpha_str
-                s += ")(z_{%i}-z_{%i})(z_{%i}-z_{%i})"%(x, w, y, x)
+                s += ")%s%s"%(ij2diff(x, w), ij2diff(y, x))
             equations_str += s + "$\n"
         return equations_str
         
