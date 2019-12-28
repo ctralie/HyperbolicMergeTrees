@@ -348,6 +348,8 @@ class HyperbolicDelaunay(object):
                 if index == N-1:
                     index = -1
                 eq = {'w':e1.prev.head.index, 'x':index, 'y':e2.head.index, 'uidxs':uidxs[::], 'vs':vs}
+                if eq['y'] < eq['w']:
+                    eq['y'], eq['w'] = eq['w'], eq['y']
                 equations.append(eq)
                 if (e2.internal_idx > -1) and e2.is_aux:
                     # The full edge will be used in the next equation
