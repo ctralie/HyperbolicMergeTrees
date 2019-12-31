@@ -1,3 +1,8 @@
+"""
+Code to glue together chiral merge trees, hyperbolic
+delaunay triangluations / equations, and hyperbolic
+Voronoi diagrams
+"""
 import numpy as np
 import time
 import matplotlib.pyplot as plt
@@ -6,42 +11,56 @@ from HypDelaunay import *
 from HypMergeTree import *
 from MergeTree import *
 
-EPS = 1e-4
-
-def mergetree_to_hypmergetree(T, symbolic=False, verbose=False):
+def mergetree_to_hypmergetree(cmt, constraints = [('z', 0, 0), ('r', -1, 1)], max_trials = 200, verbose=True, eps = 1e-7):
     """
     Given a chiral merge tree, setup the Delaunay triangulation
     and associated equations, solve for the zs/rs, and then
     solve for the hyperbolic Voronoi diagram from the zs/rs
     Parameters
     ----------
-    T: MergeTree
-        A merge tree object from which to construct
+    cmt: MergeTree
+        A chiral merge tree object from which to construct
         a hyperbolic structure
-    symbolic: boolean
-        Whether to use variables for the edge weights (True), or
-        whether to display the actual numerical edge weights (False)
+    constraints: list of [(variable type ('z' or 'r'), 
+                            index (int), 
+                            value (float)]
+        A dictionary of constraints to enforce on the zs and rs.
+        -1 for r is r_infinity
+    max_trials: int
+        Number of random initializations to try
     verbose: boolean
         Whether to print the solutions
+    
+    Returns
+    -------
+    {
+        'hd': HyperbolicDelaunay
+            An object holding the Delaunay triangulation and
+            methods for constructing, solving, and plotting the equations,
+        'hmt': HypMergeTree
+            An object holding the hyperbolic Voronoi diagram corresponding
+            to the zs/rs solution,
+        'times': ndarray(max_trials)
+            The time taken to solve each initial condition,
+        'n_invalid': int
+            The number of solutions deemed not to be valid
+    }
     """
     hd = HyperbolicDelaunay()
-    hd.init_from_mergetree(T)
+    hd.init_from_mergetree(cmt)
 
     N = len(hd.vertices)
-
-    NTrials = 20
-    solutions = []
-    times = np.zeros(NTrials)
+    times = np.zeros(max_trials)
     np.random.seed(0)
-    NInvalid = 0
+    n_invalid = 0
 
-    HMT = HypMergeTree()
-    HMT.z = np.zeros(N-1)
-    HMT.radii = np.zeros(N)
+    hmt = HypMergeTree()
+    hmt.z = np.zeros(N-1)
+    hmt.radii = np.zeros(N)
 
-    constraints = [('z', 0, 0), ('r', -1, 1)]
-
-    for i, trial in enumerate(range(NTrials)):
+    i = 0
+    solution_found = False
+    while i < max_trials and not solution_found:
         tic = time.time()
         # Setup some random initial conditions
         zs0 = np.random.randn(N-1)
@@ -55,50 +74,108 @@ def mergetree_to_hypmergetree(T, symbolic=False, verbose=False):
         res = hd.solve_equations(zs0, rs0, vs0, constraints)
         times[i] = time.time()-tic
         zs, rs, vs = res['zs'], res['rs'], res['vs']
-        if np.sum(zs[1::] - zs[0:-1] < 0) == 0 and np.sum(zs[1::]-zs[0:-1] < EPS) == 0:
-            HMT.z = zs
-            HMT.radii = rs
+        fx_sol = res['fx_sol']
+        # Check the following conditions
+        # 1) The zs are in the right order
+        # 2) Adjacent zs are more than epsilon apart
+        # 3) The rs are nonzero
+        # 4) The objective function is less than epsilon
+        if np.sum(zs[1::] - zs[0:-1] < 0) == 0 and np.sum(zs[1::]-zs[0:-1] < eps) == 0 and np.sum(rs < 0) == 0 and fx_sol < eps:
+            # Copy over the solution to the hyperbolic voronoi diagram
+            # if it is valid
+            hmt.z = zs
+            hmt.radii = rs
+            solution_found = True
             if verbose:
                 print("zs:", ["%.3g, "*zs.size%(tuple(list(zs)))])
                 print("rs", ["%.3g, "*rs.size%(tuple(list(rs)))])
                 print("fx_initial = %.3g"%res['fx_initial'])
-                print("fx_sol = %.3g"%res['fx_sol'])
+                print("fx_sol = %.3g\n"%fx_sol)
         else:
-            NInvalid += 1
-    
+            n_invalid += 1
+        i += 1
+    return {'hd':hd, 'hmt':hmt, 'times':times, 'n_invalid':n_invalid}
+
+def plot_solution_grid(cmt, hd, hmt, symbolic=False,
+                       xlims = None, ylims_voronoi = None, 
+                       ylims_masses = None):
+    """
+    Show the original chiral merge tree next to the topological
+    triangulation, the associated equations, the Voronoi diagram
+    solution, and the solution expressed as point masses
+    Parameters
+    ----------
+    cmt: MergeTree
+        The original chiral merge tree
+    hd: HyperbolicDelaunay
+        An object holding the Delaunay triangulation and
+        methods for constructing, solving, and plotting the equations
+    hmt: HypMergeTree
+        An object holding the hyperbolic Voronoi diagram corresponding
+        to the zs/rs solution
+    symbolic: boolean
+        Whether to use variables for the edge weights (True), or
+        whether to display the actual numerical edge weights (False)
+    xlims: [int, int]
+        Optional x limits for Voronoi diagram and point masses
+    ylims_voronoi: [int, int]
+        Optional y limits for Voronoi diagram
+    ylims_masses: [int, int]
+        Opitional y limits for point masses
+    """   
     plt.subplot(231)
-    T.render(offset=np.array([0, 0]))
-    plt.title("Merge Tree")
+    cmt.render(offset=np.array([0, 0]))
+    plt.title("Chiral Merge Tree")
+
     plt.subplot(232)
     hd.render(symbolic=symbolic)
     plt.title("Topological Triangulation")
-
-    plt.subplot(234)
-    HMT.refreshNeeded = True
-    HMT.renderVoronoiDiagram()
-    plt.title("Hyperbolic Voronoi Diagram")
-
-    plt.subplot(235)
-    lengths = hd.get_horocycle_arclens()
-    z = np.zeros_like(lengths)
-    z[0:-1] = HMT.z
-    z[-1] = -1
-    plt.stem(z, lengths)
-    plt.title("Masses (Total Mass %.3g)"%np.sum(lengths))
-    plt.xlabel("z")
-    plt.ylabel("Mass")
 
     plt.subplot2grid((2, 3), (0, 2), rowspan=1, colspan=1)
     plt.text(0, 0, hd.get_equations_tex(symbolic=symbolic))
     plt.title("Hyperbolic Equations")
     plt.axis('off')
 
-def testEdgeCollapse():
-    T = MergeTree(TotalOrder2DX)
-    T.root = MergeNode(np.array([0, 5]))
+    plt.subplot(234)
+    hmt.refreshNeeded = True
+    hmt.renderVoronoiDiagram()
+    plt.title("Hyperbolic Voronoi Diagram")
+    if xlims:
+        plt.xlim(xlims)
+    if ylims_voronoi:
+        plt.ylim(ylims_voronoi)
+
+    plt.subplot(235)
+    lengths = hd.get_horocycle_arclens()
+    z = np.zeros_like(lengths)
+    z[0:-1] = hmt.z
+    z[-1] = -1 # Plot the infinity weight at -1
+    plt.stem(z, lengths)
+    if xlims:
+        sxlims = [xlims[0], xlims[1]]
+        # Make sure infinity shows up
+        if sxlims[0] > -1.5:
+            sxlims[0] = -1.5
+        plt.xlim(sxlims)
+    if ylims_masses:
+        plt.ylim(ylims_masses)
+    plt.xticks(z, ["%.3g"%zi for zi in hmt.z] + ["$\infty$"])
+    plt.title("Masses (Total Mass %.3g)"%np.sum(lengths))
+    plt.xlabel("z")
+    plt.ylabel("Mass")
+
+
+
+def test_pentagon_infedges_edgecollapse(constraints = [('z', 0, 0), ('r', -1, 1)]):
+    """
+    Test an edge collapse of a pentagon whose edges
+    all go to infinity
+    """
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
     A = MergeNode(np.array([-1, 4]))
     B = MergeNode(np.array([1, 4]))
-    T.root.addChildren([A, B])
+    cmt.root.addChildren([A, B])
     C = MergeNode(np.array([0.5, 3]))
     D = MergeNode(np.array([2, 3]))
     B.addChildren([C, D])
@@ -110,41 +187,133 @@ def testEdgeCollapse():
     N = 20
     for i, Ey in enumerate(np.linspace(2, 3, N)):
         E.X[1] = Ey
+        res = mergetree_to_hypmergetree(cmt, constraints)
         plt.clf()
-        mergetree_to_hypmergetree(T)
-        plt.subplot(231)
-        plt.title("Merge Tree (Height = %.3g)"%Ey)
-        plt.subplot(234)
-        plt.xlim([-0.5, 4.5])
-        plt.ylim([0, 3])
-        plt.subplot(235)
-        plt.xlim([-1.5, 4.5])
-        plt.ylim([0, 6.5])
+        plot_solution_grid(cmt, res['hd'], res['hmt'], xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5])
         plt.savefig("%i.png"%i, bbox_inches='tight')
     
-    T = MergeTree(TotalOrder2DX)
-    T.root = MergeNode(np.array([0, 5]))
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
     A = MergeNode(np.array([-1, 4]))
     B = MergeNode(np.array([1, 4]))
-    T.root.addChildren([A, B])
+    cmt.root.addChildren([A, B])
     C = MergeNode(np.array([0.5, 3]))
     D = MergeNode(np.array([2, 3]))
-    #B.addChildren([C, D])
-    #E = MergeNode(np.array([1.5, 2]))
     F = MergeNode(np.array([3, 2]))
-    #D.addChildren([E, F])
     B.addChildren([C, F])
 
     plt.clf()
-    mergetree_to_hypmergetree(T)
-    plt.subplot(234)
-    plt.xlim([-0.5, 4.5])
-    plt.ylim([0, 3])
-    plt.subplot(235)
-    plt.xlim([-1.5, 4.5])
-    plt.ylim([0, 6.5])
+    res = mergetree_to_hypmergetree(cmt, constraints)
+    plot_solution_grid(cmt, res['hd'], res['hmt'], xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5])
     plt.savefig("%i.png"%N, bbox_inches='tight')
-        
+
+def test_pentagon_general_edgecollapse():
+    """
+    Test an edge collapse of a pentagon whose edges
+    don't all go to infinity
+    """
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
+    A = MergeNode(np.array([-1, 4]))
+    B = MergeNode(np.array([2, 4]))
+    cmt.root.addChildren([A, B])
+    C = MergeNode(np.array([-3, 3]))
+    D = MergeNode(np.array([-0.5, 2.8]))
+    E = MergeNode(np.array([-4, 2]))
+    A.addChildren([E, D])
+    I = MergeNode(np.array([1, 2.6]))
+    J = MergeNode(np.array([4, 2.3]))
+    B.addChildren([J, I])
+
+    plt.figure(figsize=(18, 12))
+    N = 20
+    for i, Iy in enumerate(np.linspace(2.6, 4, N)):
+        I.X[1] = Iy
+        res = mergetree_to_hypmergetree(cmt)
+        plt.clf()
+        plot_solution_grid(cmt, res['hd'], res['hmt'], xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5])
+        plt.savefig("%i.png"%i, bbox_inches='tight')
+    
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
+    A = MergeNode(np.array([-1, 4]))
+    B = MergeNode(np.array([2, 4]))
+    C = MergeNode(np.array([-3, 3]))
+    D = MergeNode(np.array([-0.5, 2.8]))
+    E = MergeNode(np.array([-4, 2]))
+    A.addChildren([E, D])
+    I = MergeNode(np.array([1, 2.6]))
+    J = MergeNode(np.array([4, 2.3]))
+    cmt.root.addChildren([A, J])
+
+    plt.clf()
+    res = mergetree_to_hypmergetree(cmt)
+    plot_solution_grid(cmt, res['hd'], res['hmt'], xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5])
+    plt.savefig("%i.png"%N, bbox_inches='tight')
+
+
+
+def test_septagon_general_edgecollapse(eps):
+    """
+    Test an edge collapse of a pentagon whose edges
+    don't all go to infinity
+    NOTE: This is slower in the general case than it was 
+    before.  It may also be necessary to tweak the epsilon
+    """
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
+    A = MergeNode(np.array([-1, 4]))
+    B = MergeNode(np.array([2, 4]))
+    cmt.root.addChildren([A, B])
+    C = MergeNode(np.array([-3, 3]))
+    D = MergeNode(np.array([-0.5, 2.8]))
+    A.addChildren([C, D])
+    E = MergeNode(np.array([-4, 2]))
+    F = MergeNode(np.array([-2, 1.6]))
+    C.addChildren([E, F])
+    G = MergeNode(np.array([-3, 0]))
+    H = MergeNode(np.array([-1, 0.5]))
+    F.addChildren([G, H])
+    I = MergeNode(np.array([1, 2.6]))
+    J = MergeNode(np.array([4, 2.3]))
+    B.addChildren([J, I])
+
+    plt.figure(figsize=(18, 12))
+    N = 20
+    xlims=[-0.5, 6]
+    ylims_voronoi=[0, 6.5]
+    ylims_masses=[0, 5]
+    for i, Iy in enumerate(np.linspace(2.6, 4, N)):
+        I.X[1] = Iy
+        res = mergetree_to_hypmergetree(cmt, eps=eps)
+        plt.clf()
+        plot_solution_grid(cmt, res['hd'], res['hmt'], xlims=xlims, ylims_voronoi=ylims_voronoi, ylims_masses=ylims_masses)
+        plt.savefig("%i.png"%i, bbox_inches='tight')
+    
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
+    A = MergeNode(np.array([-1, 4]))
+    B = MergeNode(np.array([2, 4]))
+    C = MergeNode(np.array([-3, 3]))
+    D = MergeNode(np.array([-0.5, 2.8]))
+    A.addChildren([C, D])
+    E = MergeNode(np.array([-4, 2]))
+    F = MergeNode(np.array([-2, 1.6]))
+    C.addChildren([E, F])
+    G = MergeNode(np.array([-3, 0]))
+    H = MergeNode(np.array([-1, 0.5]))
+    F.addChildren([G, H])
+    I = MergeNode(np.array([1, 2.6]))
+    J = MergeNode(np.array([4, 2.3]))
+    cmt.root.addChildren([A, J])
+
+    plt.clf()
+    res = mergetree_to_hypmergetree(cmt)
+    plot_solution_grid(cmt, res['hd'], res['hmt'], xlims=xlims, ylims_voronoi=ylims_voronoi, ylims_masses=ylims_masses)
+    plt.savefig("%i.png"%N, bbox_inches='tight')
 
 if __name__ == '__main__':
-    testEdgeCollapse()
+    #test_pentagon_infedges_edgecollapse()
+    #test_pentagon_infedges_edgecollapse([('z', 0, 0), ('z', 1, 1)])
+    #test_pentagon_general_edgecollapse()
+    test_septagon_general_edgecollapse(eps=1e-5)

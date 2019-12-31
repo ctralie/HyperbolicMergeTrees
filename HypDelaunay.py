@@ -535,12 +535,26 @@ class HyperbolicDelaunay(object):
                                value (float)]
             A dictionary of constraints to enforce on the zs and rs.
             -1 for r is r_infinity
+        Returns
+        -------
+        {
+            'zs': ndarray(N-1)
+                The final positions of the zs,
+            'rs': ndarray(N)
+                The final radii,
+            'vs': ndarray(N-3)
+                The final auxiliary variables,
+            'fx_initial': float
+                The objective function evaluated at the initial guess
+            'fx_sol': float
+                The objective function evaluated at the solution
+        }
         """
         x_initial = np.concatenate([zs0, rs0, vs0])
         equations = self.get_equations()
         res = opt.minimize(self.f, x_initial, args = (equations, constraints), method='BFGS')#, jac=gradf)
-        zs, rs, vs = self.unpack_variables(res['x'])
-        x_sol = np.concatenate((zs, rs, vs))
+        x_sol = res['x']
+        zs, rs, vs = self.unpack_variables(x_sol)
         fx_initial = self.f(x_initial, equations, constraints)
         fx_sol = self.f(x_sol, equations, constraints)
         return {'zs':zs, 'rs':rs, 'vs':vs, 'fx_initial':fx_initial, 'fx_sol':fx_sol}
