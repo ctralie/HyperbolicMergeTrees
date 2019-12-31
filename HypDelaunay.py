@@ -456,20 +456,6 @@ class HyperbolicDelaunay(object):
         deltas = np.zeros(N-3)
         # TODO: Finish this
 
-    def getEquations(self):
-        """
-        Return all of the information that's needed to setup equations
-        """
-        for i, v in enumerate(self.vertices):
-            vidx = v.index
-            edges = list(v.edges)
-            v2idxs = np.array([e.vertexAcross(v).index for e in edges])
-            
-            for v2 in v2idxs:
-                print("%i, %i"%(vidx, v2))
-            print("\n\n")
-
-
 
     def render(self):
         """
@@ -544,8 +530,6 @@ if __name__ == '__main__':
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
-
-    hd.getEquations()
 
     e1 = hd.getEdge(hd.vertices[0], hd.vertices[1])
     e2 = hd.getEdge(hd.vertices[1], hd.vertices[2])
