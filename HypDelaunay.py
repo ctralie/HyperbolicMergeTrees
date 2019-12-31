@@ -238,10 +238,15 @@ class HDTTri(object):
             A list of 3 edges making up the triangle.  The first
             edge is the root edge, the second edge is the left edge,
             and the third edge is the right edge
+        
+        Attributes
+        ----------
+        internalEdgeMap: dict: edge->delta
         """
         self.edges = edges
         for e in edges:
             e.addFace(self)
+        self.internalEdgeMap = {}
     
     def getVertices(self):
         verts = set([])
@@ -389,6 +394,8 @@ class HyperbolicDelaunay(object):
             if e.internal:
                 e.idx = idx
                 idx += 1
+                e.f1.internalEdgeMap[e] = 1
+                e.f2.internalEdgeMap[e] = -1
 
     def getPathLR(self, e1, e2, left):
         """
@@ -415,6 +422,8 @@ class HyperbolicDelaunay(object):
             else:
                 enext = face.getEdgeToRight(path[-1])
             path.append(enext)
+            if enext == e2:
+                break
             face = enext.faceAcross(face)
         if path[-1] == e2:
             return path
@@ -437,15 +446,13 @@ class HyperbolicDelaunay(object):
         return path
 
 
-    def getAlpha(self, v, el, er):
+    def getAlpha(self, el, er):
         """
         Return the affine function of the internal edge lengths
         that gives rise to the horo arc length between two edges
         centered at a vertex
         Parameters
         ----------
-        v: HDTVertex
-            Center vertex
         el: HDTEdge
             Left edge
         er: HDTEdge
@@ -454,7 +461,29 @@ class HyperbolicDelaunay(object):
         N = len(self.vertices)
         a = 0.0
         deltas = np.zeros(N-3)
-        # TODO: Finish this
+        path = self.getPath(el, er)
+        if el.internal:
+            tri = el.triangleInCommon(path[1])
+            if tri.internalEdgeMap[el] == -1:
+                a += el.weight
+                deltas[el.idx] = -1
+            else:
+                deltas[el.idx] = 1
+        else:
+            a += el.weight
+        for e in path[1:-1]:
+            a += e.weight
+        if er.internal:
+            tri = er.triangleInCommon(path[-2])
+            if tri.internalEdgeMap[er] == -1:
+                a += er.weight
+                deltas[er.idx] = -1
+            else:
+                deltas[er.idx] = 1
+        else:
+            a += er.weight
+        return a, deltas
+
 
 
     def render(self):
@@ -530,12 +559,25 @@ if __name__ == '__main__':
     
     hd = HyperbolicDelaunay()
     hd.init_from_mergetree(T)
-
-    e1 = hd.getEdge(hd.vertices[0], hd.vertices[1])
-    e2 = hd.getEdge(hd.vertices[1], hd.vertices[2])
+    
+    e1 = hd.getEdge(hd.vertices[4], hd.vertices[3])
+    e2 = hd.getEdge(hd.vertices[4], hd.vertices[1])
     path = hd.getPath(e1, e2)
     for e in path:
         print("%i <---> %i"%(e.v1.index, e.v2.index))
+    a, deltas = hd.getAlpha(e1, e2)
+    print(a)
+    print(deltas)
+
+    print("\n\n")
+    e1 = hd.getEdge(hd.vertices[4], hd.vertices[5])
+    e2 = hd.getEdge(hd.vertices[4], hd.vertices[1])
+    path = hd.getPath(e1, e2)
+    for e in path:
+        print("%i <---> %i"%(e.v1.index, e.v2.index))
+    a, deltas = hd.getAlpha(e1, e2)
+    print(a)
+    print(deltas)
 
     plt.subplot(121)
     T.render(offset=np.array([0, 0]))
