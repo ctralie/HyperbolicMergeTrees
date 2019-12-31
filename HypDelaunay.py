@@ -356,6 +356,38 @@ class HyperbolicDelaunay(object):
                     uidxs.append(e2.index)
             e1 = e2
         return equations
+
+    def get_horocycle_arclens(self):
+        """
+        Return the lengths of the horocyclic arcs at each vertex
+        Returns
+        -------
+        lengths: ndarray(N)
+            Horocyclic arc lengths
+        """
+        e1 = self.edges[0]
+        N = len(self.vertices)
+        lengths = np.zeros(N)
+        for index in range(N):
+            lengths[index] = self.weight_dict[e1.index]
+            e2 = e1.next
+            # Figure out the vertex index at the head
+            # of the last edge
+            next_index = index + 1
+            if next_index == N-1:
+                next_index = -1
+            elif next_index == N:
+                next_index = 0
+            # Figure out the edges that are involved
+            e2s = [e2]
+            uidxs = [e1.index]
+            while not (e2.head.index == next_index):
+                e2 = e2.pair.next
+                e2s.append(e2)
+            for e2 in e2s:
+                lengths[index] += self.weight_dict[e2.index]
+            e1 = e2
+        return lengths
     
     def get_zvals(self, eq, zs, x0=0):
         """
