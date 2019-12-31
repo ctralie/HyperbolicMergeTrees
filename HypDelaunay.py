@@ -634,16 +634,27 @@ class HyperbolicDelaunay(object):
                             plt.text(xcenter[0], xcenter[1], s)
         plt.axis('off')
     
-    def get_equations_tex(self, symbolic=True):
+    def get_equations_tex(self, constraints, symbolic=True):
         """
         Return tex code for the equations that come from this triangulation
         Parameters
         ----------
+        constraints: list of [(variable type ('z' or 'r'), 
+                               index (int), 
+                               value (float)]
+            A dictionary of constraints to enforce on the zs and rs.
+            -1 for r is r_infinity
         symbolic: boolean
             If true, write variables for the edge weights
             If false, use the actual floating point edge lengths
         """
-        equations_str = "$r_{\infty} = 1$\n$z_{\infty}=\infty$\n$z_0=0$\n"
+        equations_str = "$z_{\infty}=\infty$\n"
+        for (constraint_type, index, value) in constraints:
+            if index == -1:
+                index = "\infty"
+            else:
+                index = "%i"%index
+            equations_str += "$%s_{%s}=%.3g$\n"%(constraint_type, index, value)
         def ij2diff(i, j):
             if i < j:
                 j, i = i, j
