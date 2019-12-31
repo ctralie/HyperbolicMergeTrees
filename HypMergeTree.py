@@ -1,3 +1,7 @@
+"""
+Code with a class for storing, rendering, and computing information
+about Voronoi diagrams of ideal hyperbolic polygons
+"""
 import numpy as np 
 import matplotlib.pyplot as plt
 import itertools

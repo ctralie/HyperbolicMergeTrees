@@ -389,21 +389,18 @@ class HyperbolicDelaunay(object):
             e1 = e2
         return lengths
     
-    def get_zvals(self, eq, zs, x0=0):
+    def get_eq_zvals(self, eq, zs):
         """
-        Given the default z coordinate of x0 and
-        the rest of the N-1 z coordinates, return
-        the actual coordinates of w, x, and y, or
-        None if they happen to be infinity
+        Given the N z coordinates, return the actual coordinates
+        of w, x, and y, for a particular equation, or None 
+        if they happen to be infinity
 
         Parameters
         ----------
         eq: Dictionary
             A dictionary element returned by self.get_equations()
-        zs: ndarray(N-2)
-            X coordinates of the zs, excluding z_{\infty} and z0
-        x0: float
-            Default value of x0
+        zs: ndarray(N-1)
+            X coordinates of the zs, excluding z_{\infty}
         Returns
         -------
         w: float
@@ -415,29 +412,23 @@ class HyperbolicDelaunay(object):
         """
         vals = [None, None, None]
         for i, zidx in enumerate([eq['w'], eq['x'], eq['y']]):
-            if zidx == 0:
-                vals[i] = x0
-            elif zidx > 0:
+            if zidx > -1:
                 vals[i] = zs[zidx-1]
         return vals[0], vals[1], vals[2]
 
-    def fi(self, eq, zs, rs, vs, x0=0, rinf = 1):
+    def fi(self, eq, zs, rs, vs):
         """
         Set up an objective function for satisfying a particular equation
         Parameters
         ----------
         eq: Dictionary
             A dictionary element returned by self.get_equations()
-        zs: ndarray(N-2)
-            X coordinates of the zs, excluding z_{\infty} and z0
-        rs: ndarray(N-1)
-            R values of everything excuting r_{\infty}
+        zs: ndarray(N-1)
+            X coordinates of the zs, excluding z_{\infty}
+        rs: ndarray(N)
+            R values of everything (with r_inf the last element)
         vs: ndarray(N-3)
             Values of internal edge auxiliary variables
-        x0: float
-            Default value of x0
-        rinf: float
-            Default value of r_{\infty}
         Returns
         -------
         {'res': fi(zs, rs, vs): float
@@ -453,10 +444,10 @@ class HyperbolicDelaunay(object):
             alpha += coeff*vs[v]
         res = 0
         uidxs, vs = eq['uidxs'], eq['vs']
-        r = rinf
+        r = rs[-1]
         if eq['x'] > -1:
             r = rs[eq['x']]
-        w, x, y = self.get_zvals(eq, zs, x0)
+        w, x, y = self.get_eq_zvals(eq, zs)
         if w is None:
             # Case 2
             res = (r - alpha*abs(y-x))**2
@@ -465,7 +456,7 @@ class HyperbolicDelaunay(object):
             res = (r - alpha*abs(x-w))**2
         elif x is None:
             # Case 4
-            res = (rinf*alpha - abs(y-w))**2
+            res = (r*alpha - abs(y-w))**2
         else:
             # Case 1
             res = (r*abs(y-w) - alpha*abs(x-w)*abs(y-x))**2
@@ -473,40 +464,42 @@ class HyperbolicDelaunay(object):
 
     def unpack_variables(self, x):
         """
-        Unpack the 3N-6 variables into zs, rs, and vs
+        Unpack the 3N-4 variables into zs, rs, and vs
         Parameters
         ----------
-        x: ndarray(3N-6)
-            A concatenation of [zs(N-2), rs(N-1), vs(N-3)]
+        x: ndarray(3N-4)
+            A concatenation of [zs(N-1), rs(N), vs(N-3)]
         Returns
         -------
-        zs: ndarray(N-2)
+        zs: ndarray(N-1)
             z positions
-        rs: ndarray(N-1)
+        rs: ndarray(N)
             Radii
         vs: ndarray(N-3)
             Auxiliary variables
         """
         N = len(self.vertices)
-        zs = x[0:N-2]
-        rs = x[N-2:N-2+N-1]
+        zs = x[0:N-1]
+        rs = x[N-1:N-1+N]
         vs = x[-(N-3)::]
         return zs, rs, vs
 
-    def f(self, x, equations, x0=0, rinf=1):
+    def f(self, x, equations, constraints):
         """
-        Return the objective function sum_i f_i(x)
+        Return the objective function sum_i f_i(x), as well
+        as terms for the constraints
         Parameters
         ----------
-        x: ndarray(3*N-6)
+        x: ndarray(3*N-4)
             Current estimate of all variables; a concatenation of
-            [zs(N-2), rs(N-1), vs(N-3)]
+            [zs(N-1), rs(N), vs(N-3)]
         equations: dict
             Equations returned by self.get_equations()
-        x0: float
-            Default value of x0
-        rinf: float
-            Default value of r_{\infty}
+        constraints: list of [(variable type ('z' or 'r'), 
+                               index (int), 
+                               value (float)]
+            A dictionary of constraints to enforce on the zs and rs.
+            -1 for r is r_infinity
         Returns
         -------
         res: float
@@ -515,33 +508,41 @@ class HyperbolicDelaunay(object):
         res = 0.0
         zs, rs, vs = self.unpack_variables(x)
         for eq in equations:
-            res += self.fi(eq, zs, rs, vs, x0, rinf)['res']
+            res += self.fi(eq, zs, rs, vs)['res']
+        for (constraint_type, index, value) in constraints:
+            if constraint_type == 'r':
+                res += (rs[index]-value)**2
+            elif constraint_type == 'z':
+                res += (zs[index]-value)**2
+            else:
+                print("Unknown constraint type: %s"%constraint_type)
         return 0.5*res
 
-    def solve_equations(self, zs0, rs0, vs0, x0=0, rinf=1, verbose=False):
+    def solve_equations(self, zs0, rs0, vs0, constraints = [('z', 0, 0), ('r', -1, 1)], verbose=False):
         """
         Solve for the zs, rs, and auxiliary variables vs which
         give rise to the merge tree with this topology and weights
         Parameters
         ----------
-        zs0: ndarray(N-2)
-            X coordinates of the initial zs, excluding z_{\infty} and z0
-        rs0: ndarray(N-1)
+        zs0: ndarray(N-1)
+            X coordinates of the initial zs, excluding z_{\infty}
+        rs0: ndarray(N)
             R values of the initial rs, excluding r_{\infty}
         vs0: ndarray(N-3)
             Initial values of internal edge auxiliary variables
-        x0: float
-            Default value of x0
-        rinf: float
-            Default value of r_{\infty}
+        constraints: list of [(variable type ('z' or 'r'), 
+                               index (int), 
+                               value (float)]
+            A dictionary of constraints to enforce on the zs and rs.
+            -1 for r is r_infinity
         """
         x_initial = np.concatenate([zs0, rs0, vs0])
         equations = self.get_equations()
-        res = opt.minimize(self.f, x_initial, args = (equations, x0, rinf), method='BFGS')#, jac=gradf)
+        res = opt.minimize(self.f, x_initial, args = (equations, constraints), method='BFGS')#, jac=gradf)
         x_sol = res['x']
         zs, rs, vs = self.unpack_variables(x_sol)
-        fx_initial = self.f(x_initial, equations, x0, rinf)
-        fx_sol = self.f(x_sol, equations, x0, rinf)
+        fx_initial = self.f(x_initial, equations, constraints)
+        fx_sol = self.f(x_sol, equations, constraints)
         return {'zs':zs, 'rs':rs, 'vs':vs, 'fx_initial':fx_initial, 'fx_sol':fx_sol}
 
     def render(self, symbolic=True):
