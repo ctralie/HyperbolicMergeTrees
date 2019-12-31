@@ -230,6 +230,44 @@ def hyperbolicArclen2(x):
     arg = 1 + ((x2-x1)**2 + (y2-y1)**2)/(2*y1*y2)
     return np.arccosh(arg)
 
+def intersectSegments2D(L1, L2, countEndpoints = True):
+    """
+    Find the intersection of two 2D line segments in a 
+    numerically stable way by looking at them parametrically
+    Parameters
+    ----------
+    L1: ndarray(2, 2)
+        [point1; point2] on the first line segment
+    L2: ndarray(2, 2)
+        [point1; point2] on the second line segment
+    
+    Returns
+    -------
+    intersection: ndarray(2)
+        Intersection point, if it exists.  None otherwise
+    """
+    denomDet = (L2[1,0]-L2[0,0])*(L1[0,1]-L1[1,1])-(L2[1,1]-L2[0,1])*(L1[0,0]-L1[1,0])
+    if (denomDet == 0): #Segments are parallel
+        return None
+    num_t = (L1[0,0]-L2[0,0])*(L1[0,1]-L1[1,1])-(L1[0,1]-L2[0,1])*(L1[0,0]-L1[1,0])
+    num_s = (L2[1,0]-L2[0,0])*(L1[0,1]-L2[0,1])-(L2[1,1]-L2[0,1])*(L1[0,0]-L2[0,0])
+    t = float(num_t) / float(denomDet)
+    s = float(num_s) / float(denomDet)
+    if (s < 0 or s > 1):
+        return None #Intersection not within the bounds of segment 1
+    if (t < 0 or t > 1):
+        return None #Intersection not within the bounds of segment 2
+
+    #Don't count intersections that occur at the endpoints of both segments
+    #if the user so chooses
+    if ((t == 0 or t == 1) and (s == 0 or s == 1) and (not countEndpoints)):
+        return None
+    
+    ret = np.array(L1[0, :])
+    ret[0] = ret[0] + (L1[1,0]-L1[0,0])*s
+    ret[1] = ret[1] + (L1[1,1]-L1[0,1])*s
+    return ret
+
 if __name__ == '__main__':
     #testArcIntersection()
     #testPointInRegion()
