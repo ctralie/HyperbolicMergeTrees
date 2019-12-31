@@ -1,3 +1,8 @@
+"""
+Contains code for representing chiral merge trees, as well
+as code for performing edit operations on them, and code
+for computing chiral merge trees from time series
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches

@@ -1,3 +1,7 @@
+"""
+Code with a class for storing, rendering, and computing information
+about Voronoi diagrams of ideal hyperbolic polygons
+"""
 import numpy as np 
 import matplotlib.pyplot as plt
 import itertools
@@ -128,7 +132,8 @@ class HypMergeTree(object):
         if not xlims:
             [xlims, ylims] = [res['xlims'], res['ylims']]
         #First plot Voronoi points
-        plt.scatter(PsLocs[:, 0], PsLocs[:, 1], 40, 'k', zorder=100)
+        if PsLocs.size > 0:
+            plt.scatter(PsLocs[:, 0], PsLocs[:, 1], 40, 'k', zorder=100)
         if plotLabelNums:
             for i in range(PsLocs.shape[0]):
                 plt.text(PsLocs[i, 0]+0.01, PsLocs[i, 1]+0.01, "%s"%i)
