@@ -413,7 +413,7 @@ class HyperbolicDelaunay(object):
         vals = [None, None, None]
         for i, zidx in enumerate([eq['w'], eq['x'], eq['y']]):
             if zidx > -1:
-                vals[i] = zs[zidx-1]
+                vals[i] = zs[zidx]
         return vals[0], vals[1], vals[2]
 
     def fi(self, eq, zs, rs, vs):
@@ -518,7 +518,7 @@ class HyperbolicDelaunay(object):
                 print("Unknown constraint type: %s"%constraint_type)
         return 0.5*res
 
-    def solve_equations(self, zs0, rs0, vs0, constraints = [('z', 0, 0), ('r', -1, 1)], verbose=False):
+    def solve_equations(self, zs0, rs0, vs0, constraints, verbose=False):
         """
         Solve for the zs, rs, and auxiliary variables vs which
         give rise to the merge tree with this topology and weights
@@ -539,8 +539,8 @@ class HyperbolicDelaunay(object):
         x_initial = np.concatenate([zs0, rs0, vs0])
         equations = self.get_equations()
         res = opt.minimize(self.f, x_initial, args = (equations, constraints), method='BFGS')#, jac=gradf)
-        x_sol = res['x']
-        zs, rs, vs = self.unpack_variables(x_sol)
+        zs, rs, vs = self.unpack_variables(res['x'])
+        x_sol = np.concatenate((zs, rs, vs))
         fx_initial = self.f(x_initial, equations, constraints)
         fx_sol = self.f(x_sol, equations, constraints)
         return {'zs':zs, 'rs':rs, 'vs':vs, 'fx_initial':fx_initial, 'fx_sol':fx_sol}
