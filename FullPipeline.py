@@ -319,8 +319,40 @@ def test_septagon_general_edgecollapse(constraints=[('z', 0, 0), ('r', -1, 1)]):
     plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=xlims, ylims_voronoi=ylims_voronoi, ylims_masses=ylims_masses)
     plt.savefig("%i.png"%N, bbox_inches='tight')
 
+def test_pentagon_two_small_edges(constraints=[('z', 0, 0), ('r', -1, 1)]):
+    """
+    Test an edge collapse of a pentagon whose edges
+    don't all go to infinity
+    """
+    cmt = MergeTree(TotalOrder2DX)
+    cmt.root = MergeNode(np.array([0, 5]))
+    A = MergeNode(np.array([-1, 4]))
+    B = MergeNode(np.array([2, 4]))
+    cmt.root.addChildren([A, B])
+    C = MergeNode(np.array([-3, 3]))
+    D = MergeNode(np.array([-0.5, 3.9]))
+    E = MergeNode(np.array([-4, 2]))
+    A.addChildren([E, D])
+    I = MergeNode(np.array([1, 2.6]))
+    J = MergeNode(np.array([4, 2.3]))
+    B.addChildren([J, I])
+
+    plt.figure(figsize=(18, 12))
+    res = mergetree_to_hypmergetree(cmt, constraints)
+    plt.clf()
+    plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5.5])
+    plt.savefig("Pentagon1.png", bbox_inches='tight')
+
+    A.X = np.array([-3, 2.5])
+    D.X = np.array([-2.5, 2.4])
+    res = mergetree_to_hypmergetree(cmt, constraints)
+    plt.clf()
+    plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5.5])
+    plt.savefig("Pentagon2.png", bbox_inches='tight')
+
 if __name__ == '__main__':
     #test_pentagon_infedges_edgecollapse()
     #test_pentagon_infedges_edgecollapse([('z', 0, 0), ('z', 1, 1)])
-    test_pentagon_general_edgecollapse()
+    #test_pentagon_general_edgecollapse()
     #test_septagon_general_edgecollapse()
+    test_pentagon_two_small_edges()
