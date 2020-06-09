@@ -169,7 +169,7 @@ class MergeTree(object):
     Holds nodes starting at root, and a table of partial order info (
     -1 for less than, 1 for greater than, 0 for undefined)
     """
-    def __init__(self, orderFn):
+    def __init__(self, orderFn = TotalOrder2DX):
         self.root = None
         self.orderFn = orderFn
         self.fVals = []

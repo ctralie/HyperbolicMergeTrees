@@ -120,9 +120,103 @@ def weightsequence_to_binarytree(pws):
     T = BinaryTree()
     T.root = nodes[0]
     return T
-            
-if __name__ == '__main__':
-    T = weightsequence_to_binarytree([1, 1, 1, 1, 3])
+
+def enumerate_weightsequences(N):
+    """
+    Enumerate all of the weight sequences
+    for a tree with N internal nodes
+    Parameters
+    ----------
+    N: int
+        Number of internal nodes
+    """
+    ws = [np.ones(N)]
+    w = np.ones(N, dtype=int)
+    finished = False
+    while not finished:
+        i = N-1
+        while w[i] >= i+1 and i >= 0:
+            i -= 1
+        if i == -1:
+            finished = True
+        else:
+            j = i - w[i]
+            w[i] += w[j]
+            for m in range(i+1, N):
+                w[m] = 1
+            ws.append(np.array(w))
+    return ws
+
+def get_meet_join(w1, w2):
+    """
+    Get the join and meet of two weight sequences
+    corresponding to two trees
+    Parameters
+    ----------
+    w1: ndarray(N)
+        Weight sequence for the first tree with N internal
+        nodes
+    w2: ndarray(N)
+        Weight sequence for the second tree with N internal
+        nodes
+    """
+    M = len(w1)
+    meet = np.minimum(w1, w2)
+    join = np.zeros_like(w1)
+    for i in range(M):
+        join[i] = max(w1[i], w2[i])
+        if join[i] != 1 and join[i] != i+1:
+            j = np.min(np.array([k-join[k-1]+1 for k in range(i+1-join[i]+1, i+2)]))
+            join[i] = (i + 1) - j
+    return meet, join
+
+def render_tree(w, N):
+    T = weightsequence_to_binarytree(w)
     MT = T.to_merge_tree()
     MT.render(np.array([0, 0]))
+    plt.ylim([-N-1, 1])
+    plt.xlim([-1, 2*N+1])
+    plt.axis('off')
+
+def make_all_tree_figures(N):
+    """
+    Create figures of all possible binary trees of 
+    a certain size
+    """
+    ws = enumerate_weightsequences(N)
+    for i, w in enumerate(ws):
+        plt.clf()
+        render_tree(w, N)
+        plt.title("{} of {}".format(i+1, len(ws)))
+        plt.savefig("{}.png".format(i))
+
+def test_meet_join(N):
+    np.random.seed(2)
+    ws = enumerate_weightsequences(N)
+    idx = np.random.permutation(len(ws))
+    w1 = ws[idx[0]]
+    w2 = ws[idx[1]]
+    meet, join = get_meet_join(w1, w2)
+    print(meet)
+    print(join)
+    plt.subplot(221)
+    render_tree(w1, N)
+    plt.title("T1: {}".format(w1))
+    plt.subplot(222)
+    render_tree(w2, N)
+    plt.title("T2: {}".format(w2))
+    plt.subplot(223)
+    render_tree(meet, N)
+    plt.title("Meet: {}".format(meet))
+    """
+    plt.subplot(224)
+    render_tree(join, N)
+    plt.title("Join: {}".format(join))
+    """
     plt.show()
+
+
+
+if __name__ == '__main__':
+    #make_all_tree_figures(7)
+    test_meet_join(7)
