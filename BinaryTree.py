@@ -496,6 +496,8 @@ def test_meet_join(N):
     plt.show()
 
 def test_rotation_distance(N):
+    ## Step 1: Select two random binary trees and compute
+    ## their rotation distance
     np.random.seed(3)
     ws = enumerate_weightsequences(N)
     idx = np.random.permutation(len(ws))
@@ -504,14 +506,33 @@ def test_rotation_distance(N):
     w2 = ws[idx[1]]
     T2 = weightsequence_to_binarytree(w2)
     sequence = get_rotation_distance(T1, T2)
-    plt.figure(figsize=(7, 7))
+    print("Dist = ", len(sequence)-1)
+    plt.figure(figsize=(5, 5))
     for i, w in enumerate(sequence):
         plt.clf()
         render_tree(w, N)
         plt.title("Dist {}: {}".format(i, w))
         plt.savefig("Rot{}.png".format(i))
 
+    ## Step 2: Solve for the hyperbolic structures
+    ## that realize these two binary trees
+    from FullPipeline import mergetree_to_hypmergetree, plot_solution_grid
+    plt.figure(figsize=(18, 12))
+    constraints=[('z', 0, 0), ('r', -1, 1)]
+    cmt = T1.to_merge_tree()
+    res = mergetree_to_hypmergetree(cmt, constraints)
+    plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5.5], perturb=0)
+    plt.savefig("T1.png", bbox_inches='tight')
+    constraints=[('z', 0, 0), ('r', -1, 1)]
+
+    plt.clf()
+    cmt = T2.to_merge_tree()
+    res = mergetree_to_hypmergetree(cmt, constraints)
+    plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5.5], perturb=0)
+    plt.savefig("T2.png", bbox_inches='tight')
+
+
 if __name__ == '__main__':
     #make_all_tree_figures(7)
     #test_meet_join(7)
-    test_rotation_distance(12)
+    test_rotation_distance(5)

@@ -102,7 +102,7 @@ def mergetree_to_hypmergetree(cmt, constraints, max_trials = 500, z_eps = 1e-4, 
 
 def plot_solution_grid(cmt, hd, hmt, constraints, symbolic=False,
                        xlims = None, ylims_voronoi = None, 
-                       ylims_masses = None):
+                       ylims_masses = None, perturb=0):
     """
     Show the original chiral merge tree next to the topological
     triangulation, the associated equations, the Voronoi diagram
@@ -131,6 +131,8 @@ def plot_solution_grid(cmt, hd, hmt, constraints, symbolic=False,
         Optional y limits for Voronoi diagram
     ylims_masses: [int, int]
         Opitional y limits for point masses
+    perturb: boolean
+        Whether to perturb z positions slightly
     """   
     plt.subplot(231)
     cmt.render(offset=np.array([0, 0]))
@@ -146,8 +148,13 @@ def plot_solution_grid(cmt, hd, hmt, constraints, symbolic=False,
     plt.axis('off')
 
     plt.subplot(234)
+    if perturb > 0:
+        z_orig = np.array(hmt.z)
+        hmt.z += np.random.rand(hmt.z.size)*perturb
     hmt.refreshNeeded = True
     hmt.renderVoronoiDiagram()
+    if perturb > 0:
+        hmt.z = z_orig
     plt.title("Hyperbolic Voronoi Diagram")
     if xlims:
         plt.xlim(xlims)

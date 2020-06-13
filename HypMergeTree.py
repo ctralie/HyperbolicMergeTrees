@@ -64,7 +64,7 @@ class HypMergeTree(object):
         XCirc = np.zeros((len(t), 2))
         XCirc[:, 0] = np.cos(t)
         XCirc[:, 1] = np.sin(t)
-        t = np.linspace(0, np.pi, NCircPts/2)
+        t = np.linspace(0, np.pi, int(NCircPts/2))
         XSemi = np.zeros((len(t), 2))
         XSemi[:, 0] = np.cos(t)
         XSemi[:, 1] = np.sin(t)
