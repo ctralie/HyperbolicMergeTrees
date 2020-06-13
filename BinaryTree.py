@@ -1,6 +1,7 @@
 import numpy as np 
 import matplotlib.pyplot as plt
 from collections import deque
+from heapq import heappush, heappop
 from MergeTree import *
 from HypDelaunay import *
 
@@ -363,6 +364,50 @@ def enumerate_weightsequences(N):
             ws.append(np.array(w))
     return ws
 
+def get_rotation_distance(T1, T2):
+    """
+    Get the rotation distance between two trees
+    using brute force breadth-first search
+    """
+    import json
+    prev = {} # Stores the tree that came directly
+    # before this tree in a shortest path
+    dist = {} # Stores the distance from T1 to this tree
+    w1 = T1.get_weight_sequence()
+    w1_str = "{}".format(w1)
+    w2 = T2.get_weight_sequence()
+    w2_str = "{}".format(w2)
+    h = []  # Heap will contain (distance, weight string, prev weight string)
+    # Setup initial neighbors from first tree
+    for neighb in T1.get_rotation_neighbors():
+        s = "{}".format(neighb['w'])
+        heappush(h, (1, s, w1_str))
+    # Perform breadth-first search
+    while len(h) > 0:
+        (d, s, p) = heappop(h)
+        if not s in dist:
+            dist[s] = d
+            prev[s] = p
+            if s == w2_str:
+                break
+            # Add on neighbors
+            T = weightsequence_to_binarytree(json.loads(s))
+            for neighb in T.get_rotation_neighbors():
+                ns = "{}".format(neighb['w'])
+                heappush(h, (d+1, ns, s))
+    # Now backtrace to find sequence from T1 to T2
+    sequence = [w2_str]
+    while prev[sequence[-1]] != w1_str:
+        sequence.append(prev[sequence[-1]])
+    sequence.append(w1_str)
+    sequence = sequence[::-1]
+    sequence = [json.loads(s) for s in sequence]
+    print("dist(T2) = ", dist[w2_str])
+    print("len(sequence) = ", len(sequence))
+    return sequence
+
+    
+
 def get_meet_join(w1, w2):
     """
     Get the join and meet of two weight sequences
@@ -450,8 +495,23 @@ def test_meet_join(N):
     """
     plt.show()
 
-
+def test_rotation_distance(N):
+    np.random.seed(3)
+    ws = enumerate_weightsequences(N)
+    idx = np.random.permutation(len(ws))
+    w1 = ws[idx[0]]
+    T1 = weightsequence_to_binarytree(w1)
+    w2 = ws[idx[1]]
+    T2 = weightsequence_to_binarytree(w2)
+    sequence = get_rotation_distance(T1, T2)
+    plt.figure(figsize=(7, 7))
+    for i, w in enumerate(sequence):
+        plt.clf()
+        render_tree(w, N)
+        plt.title("Dist {}: {}".format(i, w))
+        plt.savefig("Rot{}.png".format(i))
 
 if __name__ == '__main__':
-    make_all_tree_figures(7)
+    #make_all_tree_figures(7)
     #test_meet_join(7)
+    test_rotation_distance(12)
