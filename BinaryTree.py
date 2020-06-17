@@ -470,7 +470,7 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
     alpha2_str = "{}".format(alpha2.tolist())
     # Heuristic is the L1 distance between alpha sequence
     # at node and alpha sequence at target
-    heuristic = lambda alpha: 0.25*np.abs(np.sum(alpha-alpha2))
+    heuristic = lambda alpha: 0.25*np.sum(np.abs(alpha-alpha2))
 
     # Heap will contain 
     # (heuristic, true distance, alpha string, prev alpha string)
@@ -506,6 +506,7 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
         print("dist(BT2) = ", dist[alpha2_str])
         print("len(sequence) = ", len(sequence))
         print("{} Expanded".format(num_expanded))
+        print("heuristic from start to finish: ", heuristic(alpha1))
     return sequence
 
 
