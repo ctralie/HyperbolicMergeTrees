@@ -694,13 +694,12 @@ def test_alpha_sequence_neighbors():
     plt.savefig("Alpha_Sequence_Neighbors.svg", bbox_inches='tight')
 
 
-def test_rotation_distance_heuristic(N):
+def test_rotation_distance_heuristic(N, seed):
     ## Step 1: Select two random binary trees and compute
     ## their rotation distance
-    np.random.seed(3)
+    np.random.seed(seed)
     ws = enumerate_weightsequences(N)
-    for i in range(10):
-        idx = np.random.permutation(len(ws))
+    idx = np.random.permutation(len(ws))
     w1 = ws[idx[0]]
     T1 = weightsequence_to_binarytree(w1)
     w2 = ws[idx[1]]
@@ -720,18 +719,8 @@ def test_rotation_distance_heuristic(N):
         T = HyperbolicDelaunay()
         T.init_from_alphasequence_unweighted(alphas)
         T.render(draw_vars=False)
-        plt.title("{}".format(alphas))
+        plt.title("{}".format(np.array(alphas, dtype=int)))
         plt.savefig("Rot{}.png".format(i))
-
-    """
-    print("Dist = ", len(sequence)-1)
-    plt.figure(figsize=(5, 5))
-    for i, w in enumerate(sequence):
-        plt.clf()
-        render_tree(w, N)
-        plt.title("Dist {}: {}".format(i, w))
-        plt.savefig("Rot{}.png".format(i))
-    """
 
 if __name__ == '__main__':
     #make_all_tree_figures(7)
@@ -739,4 +728,4 @@ if __name__ == '__main__':
     #test_rotation_distance_hyperbolic(5)
     #test_alpha_sequences()
     #test_alpha_sequence_neighbors()
-    test_rotation_distance_heuristic(10)
+    test_rotation_distance_heuristic(10, 0)
