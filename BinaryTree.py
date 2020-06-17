@@ -545,27 +545,12 @@ def test_rotation_distance_hyperbolic(N):
     plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5.5], perturb=0)
     plt.savefig("T2.png", bbox_inches='tight')
 
-def test_alpha_sequence():
-    #w = [1, 1, 1, 2, 3, 4, 1, 1]
-    w = [1, 2, 3, 4, 1, 1, 1, 4]
-    BT = weightsequence_to_binarytree(w)
-    T = BT.to_triangulation()
-    alphas = T.get_horocycle_arclens()
-    print(alphas)
-    alphas = np.array(alphas, dtype=int)
-    plt.figure(figsize=(10, 5))
-    plt.subplot(121)
-    T.render()
-    
-    T = HyperbolicDelaunay()
-    T.init_from_alphasequence_unweighted(alphas)
-    print(T.get_horocycle_arclens())
-    plt.subplot(122)
-    T.render(draw_vars=False)
-    plt.show()
-
 
 def test_alpha_sequences():
+    """
+    Verify that the alpha sequences are 1 to 1
+    with possible triangulations
+    """
     ws = enumerate_weightsequences(10)
     sequences = {}
     for w in ws:
@@ -581,8 +566,52 @@ def test_alpha_sequences():
     print(len(ws))
     print(len(sequences))
 
+def test_alpha_sequence_neighbors():
+    """
+    Plot the neighbors of a particular alpha sequence
+    by flipping edges
+    """
+    #w = [1, 1, 1, 2, 3, 4, 1, 1]
+    w = [1, 2, 3, 4, 1, 1, 1, 4]
+    BT = weightsequence_to_binarytree(w)
+    T = BT.to_triangulation()
+    alphas = T.get_horocycle_arclens()
+
+    N = len(w)
+    dim = int(np.ceil(np.sqrt(N)))
+    plt.figure(figsize=(dim*4, dim*4))
+    plt.subplot(dim, dim, 1)
+    T.render(draw_vars=False)
+    plt.title("Original: {}".format(np.array(alphas, dtype=int)))
+
+    dTheta = 2*np.pi/(N+2)
+    theta0 = np.pi/2 - dTheta/2
+    Xs = np.zeros((N+2, 2))
+    Xs[:, 0] = np.cos(theta0 + dTheta*np.arange(N+2))
+    Xs[:, 1] = np.sin(theta0 + dTheta*np.arange(N+2))
+    for i in range(N-1):
+        alphasi = np.array(alphas)
+        i1, i2, i3, i4, w = T.get_alpha_sequence_diff(i)
+        alphasi[[i1, i2]] -= w
+        alphasi[[i3, i4]] += w
+        T2 = HyperbolicDelaunay()
+        T2.init_from_alphasequence_unweighted(alphasi)
+        alphasi = T2.get_horocycle_arclens()
+        plt.subplot(dim, dim, i+2)
+        T2.render(draw_vars=False)
+        xedge = Xs[[i1+1, i2+1], :]
+        plt.plot(xedge[:, 0], xedge[:, 1], c='C2', linestyle='--')
+        alphas_plot = np.array([alphasi, alphasi-alphas], dtype=int)
+        alphas_plot = "{}".format(alphas_plot)
+        alphas_plot = alphas_plot.replace("[", "")
+        alphas_plot = alphas_plot.replace("]", "")
+        alphas_plot = alphas_plot.lstrip()
+        plt.title(alphas_plot)
+    plt.savefig("Alpha_Sequence_Neighbors.svg", bbox_inches='tight')
+
 if __name__ == '__main__':
     #make_all_tree_figures(7)
     #test_meet_join(7)
     #test_rotation_distance_hyperbolic(5)
-    test_alpha_sequence()
+    #test_alpha_sequences()
+    test_alpha_sequence_neighbors()

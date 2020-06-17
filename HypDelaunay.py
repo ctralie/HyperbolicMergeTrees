@@ -389,6 +389,31 @@ class HyperbolicDelaunay(object):
             e.face = tri
         self.triangles.append(tri)
 
+    def get_alpha_sequence_diff(self, idx):
+        """
+        Compute the indices that get updated by an 
+        edge flip
+        Parameters
+        ----------
+        idx: int
+            The index of the internal edge that will be flipped
+        Returns
+        -------
+        i1, i2: int, int
+            Indices of edges that lose weight
+        i3, i4: int, int
+            Indices of edges that gain weight
+        w: float
+            The weight that is added/lost
+        """
+        e = self.edges_internal[idx]
+        i1 = e.head.index
+        i2 = e.pair.head.index
+        i3 = e.next.head.index
+        i4 = e.pair.next.head.index
+        w = self.weight_dict[idx]
+        return i1, i2, i3, i4, w
+
 
     def get_equations(self):
         """
