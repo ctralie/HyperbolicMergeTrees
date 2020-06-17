@@ -168,6 +168,9 @@ class HyperbolicDelaunay(object):
         An unordered list of vertices
     edges: list of HDTHedge
         An unordered list of half-edges
+    edges_internal: list of HDTHedge
+        A list of one of the half-edges, ordered by index
+        of internal edges
     triangles: list of HDTTriangle
         An unordered list of triangles
     weight_dict: {int: float}
@@ -177,6 +180,7 @@ class HyperbolicDelaunay(object):
     def __init__(self):
         self.vertices = []
         self.edges = []
+        self.edges_internal = []
         self.triangles = []
         self.weight_dict = {}
     
@@ -295,14 +299,97 @@ class HyperbolicDelaunay(object):
 
         ## Step 4: Index the internal edges
         index = 0
+        self.edges_internal = []
         for e in self.edges:
             if e.face and e.pair.face and (e.internal_idx == -1):
                 e.internal_idx = index
+                self.edges_internal.append(e)
                 e.is_aux = True
                 e.pair.internal_idx = index
                 e.pair.is_aux = False
                 index += 1
     
+    def init_from_alphasequence_unweighted(self, alphas):
+        """
+        Initialize a triangulation based on an alpha sequence 
+        corresponding to a binary tree with unit weights
+        Parameters
+        ----------
+        alphas: list(N)
+            The alphas for an N-gon.  Should all be integers
+        """
+        N = len(alphas)
+        ## Step 1: Setup the outer ring
+        self.vertices = [HDTVertex(i) for i in range(N)]
+        self.vertices[-1].index = -1
+        self.edges = [HDTHedge() for i in range(2*N)]
+        for i in range(N):
+            e1 = self.edges[i*2]
+            e2 = self.edges[i*2+1]
+            e1.index = i
+            e2.index = i
+            self.weight_dict[i] = 1
+            e1.add_pair(e2)
+            e3 = self.edges[((i+1)*2)%(2*N)]
+            e4 = self.edges[((i-1)*2+1)%(2*N)]
+            e1.link_next_edge(e3)
+            e2.link_next_edge(e4)
+            e1.head = self.vertices[i]
+            e2.head = self.vertices[(i-1)%N]
+            self.vertices[i].h = e3
+        ## Step 2: Run the ear cutting algorithm
+        alphas2 = [alphas[i] for i in range(N)]
+        twos = set([i for i in range(N) if alphas[i] == 2])
+        e1 = self.edges[0]
+        e2 = self.edges[0].pair
+        for ear in range(N-3):
+            # Create new half-edge pair
+            e1, e2 = [HDTHedge(), HDTHedge()]
+            e1.index = N + ear
+            e2.index = N + ear
+            self.weight_dict[N+ear] = 1
+            self.edges += [e1, e2]
+            e1.add_pair(e2)
+            e1.internal_idx = ear
+            e2.internal_idx = ear
+            self.edges_internal.append(e1)
+            # Figure out a vertex that is involved, as 
+            # well as its two neighbors
+            idx = twos.pop()
+            v = self.vertices[idx]
+            v2 = v.h.head
+            v1 = v.h.prev.prev.head
+            e1.head = v2
+            e2.head = v1
+            # Setup the links for the new edges, and
+            # add a new face
+            v1.h.prev.link_next_edge(e1)
+            e1.link_next_edge(v2.h)
+            e2.link_next_edge(v1.h)
+            v1.h.next.link_next_edge(e2)
+            v1.h = e1
+            tri = HDTTri()
+            tri.h = e2
+            self.triangles.append(tri)
+            for e in tri.get_edges():
+                e.face = tri
+
+            # Update alpha sequence
+            for index in [v1.index, v2.index]:
+                alphas2[index] -= 1
+                if alphas2[index] == 2:
+                    twos.add(index)
+        ## Step 3: Add the last triangle
+        e = e1
+        if not e2.face:
+            e = e2
+        tri = HDTTri()
+        tri.h = e
+        for e in tri.get_edges():
+            e.face = tri
+        self.triangles.append(tri)
+
+
     def get_equations(self):
         """
         Return all of the information that's needed to setup equations
@@ -559,7 +646,7 @@ class HyperbolicDelaunay(object):
         fx_sol = self.f(x_sol, equations, constraints)
         return {'zs':zs, 'rs':rs, 'vs':vs, 'fx_initial':fx_initial, 'fx_sol':fx_sol}
 
-    def render(self, symbolic=True):
+    def render(self, symbolic=True, draw_vars=True):
         """
         Render a regular convex polygon depicting the triangulation
         and its dual.  Number the vertices and indicate the weights
@@ -569,6 +656,8 @@ class HyperbolicDelaunay(object):
         symbolic: boolean
             If true, write variables for the edge weights
             If false, use the actual floating point edge lengths
+        draw_vars: boolean
+            Whether or not to draw the variables at all
         """
         N = len(self.vertices)
         ## Step 1: Draw the polygon
@@ -612,26 +701,27 @@ class HyperbolicDelaunay(object):
                     xtree = np.array([c1, c2])
                     plt.plot(xtree[:, 0], xtree[:, 1], 'k')
                     # Draw text for weights and auxiliary variables
-                    weight = self.weight_dict[e.index]
-                    s1 = "$u_{%i}$"%e.index
-                    if not symbolic:
-                        s1 = "%.3g"%weight
-                    if e.internal_idx == -1:
-                        xtree = np.mean(xtree, 0)
-                        plt.text(xtree[0], xtree[1], s1)
-                    else:
-                        saux = "$v_{%i}$"%e.internal_idx
-                        sother = "%s - %s"%(s1, saux)
-                        xint = intersectSegments2D(xedge, xtree)
-                        plt.scatter(xint[0], xint[1], 10, c='k')
-                        for c, aux in zip([c1, c2], [e.is_aux, not e.is_aux]):
-                            xcenter = np.array([c, xint])
-                            xcenter = np.mean(xcenter, 0)
-                            if aux:
-                                s = saux
-                            else:
-                                s = sother
-                            plt.text(xcenter[0], xcenter[1], s)
+                    if draw_vars:
+                        weight = self.weight_dict[e.index]
+                        s1 = "$u_{%i}$"%e.index
+                        if not symbolic:
+                            s1 = "%.3g"%weight
+                        if e.internal_idx == -1:
+                            xtree = np.mean(xtree, 0)
+                            plt.text(xtree[0], xtree[1], s1)
+                        else:
+                            saux = "$v_{%i}$"%e.internal_idx
+                            sother = "%s - %s"%(s1, saux)
+                            xint = intersectSegments2D(xedge, xtree)
+                            plt.scatter(xint[0], xint[1], 10, c='k')
+                            for c, aux in zip([c1, c2], [e.is_aux, not e.is_aux]):
+                                xcenter = np.array([c, xint])
+                                xcenter = np.mean(xcenter, 0)
+                                if aux:
+                                    s = saux
+                                else:
+                                    s = sother
+                                plt.text(xcenter[0], xcenter[1], s)
         plt.axis('off')
     
     def get_equations_tex(self, constraints, symbolic=True):
@@ -729,7 +819,7 @@ if __name__ == '__main__':
     hd.render(symbolic=symbolic)
     plt.title("Topological Triangulation")
     plt.subplot(133)
-    plt.text(0, 0, hd.get_equations_tex(symbolic=symbolic))
+    plt.text(0, 0, hd.get_equations_tex(constraints=[('z', 0, 0), ('r', -1, 1)], symbolic=symbolic))
     plt.axis('off')
     plt.title("Hyperbolic Equations")
     filename = "%iGon.svg"%len(hd.vertices)

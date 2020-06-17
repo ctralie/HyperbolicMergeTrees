@@ -238,8 +238,22 @@ class BinaryTree(object):
         y = 0
         root = MergeNode(np.array([self.root.order, y]))
         self.to_merge_tree_rec(y, self.root, root)
-        T = MergeTree()
-        T.root = root
+        MT = MergeTree()
+        MT.root = root
+        return MT
+    
+    def to_triangulation(self):
+        """
+        Return a triangulation corresponding to this tree,
+        using unit edge weights
+        Returns
+        -------
+        T: HyperbolicDelaunay
+            The corresponding triangulation
+        """
+        MT = self.to_merge_tree()
+        T = HyperbolicDelaunay()
+        T.init_from_mergetree(MT)
         return T
     
     def get_weight_sequence(self):
@@ -495,7 +509,7 @@ def test_meet_join(N):
     """
     plt.show()
 
-def test_rotation_distance(N):
+def test_rotation_distance_hyperbolic(N):
     ## Step 1: Select two random binary trees and compute
     ## their rotation distance
     np.random.seed(3)
@@ -531,8 +545,44 @@ def test_rotation_distance(N):
     plot_solution_grid(cmt, res['hd'], res['hmt'], constraints, xlims=[-0.5, 4.5], ylims_voronoi=[0, 6.5], ylims_masses=[0, 5.5], perturb=0)
     plt.savefig("T2.png", bbox_inches='tight')
 
+def test_alpha_sequence():
+    #w = [1, 1, 1, 2, 3, 4, 1, 1]
+    w = [1, 2, 3, 4, 1, 1, 1, 4]
+    BT = weightsequence_to_binarytree(w)
+    T = BT.to_triangulation()
+    alphas = T.get_horocycle_arclens()
+    print(alphas)
+    alphas = np.array(alphas, dtype=int)
+    plt.figure(figsize=(10, 5))
+    plt.subplot(121)
+    T.render()
+    
+    T = HyperbolicDelaunay()
+    T.init_from_alphasequence_unweighted(alphas)
+    print(T.get_horocycle_arclens())
+    plt.subplot(122)
+    T.render(draw_vars=False)
+    plt.show()
+
+
+def test_alpha_sequences():
+    ws = enumerate_weightsequences(10)
+    sequences = {}
+    for w in ws:
+        BT = weightsequence_to_binarytree(w)
+        T = BT.to_triangulation()
+        alphas = T.get_horocycle_arclens()
+        alphas = np.array(alphas, dtype=int)
+        s = "{}".format(alphas)
+        if not s in sequences:
+            sequences[s] = 1
+        else:
+            sequences[s] += 1
+    print(len(ws))
+    print(len(sequences))
 
 if __name__ == '__main__':
     #make_all_tree_figures(7)
     #test_meet_join(7)
-    test_rotation_distance(5)
+    #test_rotation_distance_hyperbolic(5)
+    test_alpha_sequence()
