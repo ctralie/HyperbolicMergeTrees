@@ -392,10 +392,9 @@ def get_rotation_sequence(BT1, BT2, verbose = False):
         Whether to print out stats
     Returns
     -------
-    sequence: list of dictionary {'node':BinaryNode, 'dir':'CCW' or 'CW', 
-                                     'w':weight sequence}
-        List of trees along the path from start to finish.  Length of 
-        the list is one more than the rotation distance
+    sequence: list of lists
+        List of weight sequences along the path from start to finish.  
+        Length of the list is one more than the rotation distance
     """
     import json
     prev = {} # Stores the tree that came directly
@@ -452,10 +451,9 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
         Whether to print out stats
     Returns
     -------
-    sequence: list of ndarray
-        List of strings of alpha sequences along the path from
-        start to finish.  Length of the list is one more than 
-        the rotation distance
+    sequence: list of lists
+        List of alpha sequences along the path from start to finish.  
+        Length of the list is one more than the rotation distance
     """
     import json
     prev = {} # Stores the tree that came directly
@@ -494,7 +492,7 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
             T.init_from_alphasequence_unweighted(json.loads(s))
             for neighb in T.get_alpha_sequence_neighbors():
                 ns = "{}".format(neighb.tolist())
-                heappush(h, (1+heuristic(neighb), d+1, ns, s))
+                heappush(h, (d+1+heuristic(neighb), d+1, ns, s))
     # Now backtrace to find sequence from BT1 to BT2
     sequence = [alpha2_str]
     while prev[sequence[-1]] != alpha1_str:
@@ -701,13 +699,29 @@ def test_rotation_distance_heuristic(N):
     ## their rotation distance
     np.random.seed(3)
     ws = enumerate_weightsequences(N)
-    idx = np.random.permutation(len(ws))
+    for i in range(10):
+        idx = np.random.permutation(len(ws))
     w1 = ws[idx[0]]
     T1 = weightsequence_to_binarytree(w1)
     w2 = ws[idx[1]]
     T2 = weightsequence_to_binarytree(w2)
     sequence = get_rotation_sequence(T1, T2, verbose=True)
     sequence2 = get_rotation_sequence_alpha(T1, T2, verbose=True)
+    while len(sequence) < len(sequence2):
+        sequence.append(sequence[-1])
+
+    plt.figure(figsize=(10, 5))
+    for i, (w, alphas) in enumerate(zip(sequence, sequence2)):
+        plt.clf()
+        plt.subplot(121)
+        render_tree(w, N)
+        plt.title("Dist {}: {}".format(i, w))
+        plt.subplot(122)
+        T = HyperbolicDelaunay()
+        T.init_from_alphasequence_unweighted(alphas)
+        T.render(draw_vars=False)
+        plt.title("{}".format(alphas))
+        plt.savefig("Rot{}.png".format(i))
 
     """
     print("Dist = ", len(sequence)-1)
@@ -725,4 +739,4 @@ if __name__ == '__main__':
     #test_rotation_distance_hyperbolic(5)
     #test_alpha_sequences()
     #test_alpha_sequence_neighbors()
-    test_rotation_distance_heuristic(11)
+    test_rotation_distance_heuristic(10)
