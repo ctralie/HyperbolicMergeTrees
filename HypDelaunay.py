@@ -403,16 +403,37 @@ class HyperbolicDelaunay(object):
             Indices of edges that lose weight
         i3, i4: int, int
             Indices of edges that gain weight
-        w: float
-            The weight that is added/lost
         """
         e = self.edges_internal[idx]
         i1 = e.head.index
         i2 = e.pair.head.index
         i3 = e.next.head.index
         i4 = e.pair.next.head.index
-        w = self.weight_dict[idx]
-        return i1, i2, i3, i4, w
+        return i1, i2, i3, i4
+    
+    def get_alpha_sequence_neighbors(self, alphas = np.array([])):
+        """
+        Return a list of the alpha sequences that
+        are neighbor of this one by a flip
+        Parameters
+        ----------
+        alphas: ndarray(N)
+            The current alpha sequence.  If not specified,
+            compute it from scratch
+        """
+        if alphas.size == 0:
+            alphas = self.get_horocycle_arclens()
+        neighbors = []
+        for i in range(len(self.edges_internal)):
+            index = self.edges_internal[i].index
+            w = self.weight_dict[index]
+            alphasi = np.array(alphas)
+            i1, i2, i3, i4 = self.get_alpha_sequence_diff(i)
+            alphasi[[i1, i2]] -= w
+            alphasi[[i3, i4]] += w
+            neighbors.append(alphasi)
+        return neighbors
+
 
 
     def get_equations(self):

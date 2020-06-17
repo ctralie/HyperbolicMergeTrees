@@ -378,28 +378,44 @@ def enumerate_weightsequences(N):
             ws.append(np.array(w))
     return ws
 
-def get_rotation_distance(T1, T2):
+def get_rotation_sequence(BT1, BT2, verbose = False):
     """
-    Get the rotation distance between two trees
-    using brute force breadth-first search
+    Compute a sequence that realizes the optimal rotation dist
+    between two trees, using brute force breadth-first search
+    Parameters
+    ----------
+    BT1: BinaryTree
+        First tree
+    BT2: BinaryTree
+        Second tree
+    verbose: boolean
+        Whether to print out stats
+    Returns
+    -------
+    sequence: list of dictionary {'node':BinaryNode, 'dir':'CCW' or 'CW', 
+                                     'w':weight sequence}
+        List of trees along the path from start to finish.  Length of 
+        the list is one more than the rotation distance
     """
     import json
     prev = {} # Stores the tree that came directly
     # before this tree in a shortest path
-    dist = {} # Stores the distance from T1 to this tree
-    w1 = T1.get_weight_sequence()
+    dist = {} # Stores the distance from BT1 to this tree
+    w1 = BT1.get_weight_sequence()
     w1_str = "{}".format(w1)
-    w2 = T2.get_weight_sequence()
+    w2 = BT2.get_weight_sequence()
     w2_str = "{}".format(w2)
     h = []  # Heap will contain (distance, weight string, prev weight string)
     # Setup initial neighbors from first tree
-    for neighb in T1.get_rotation_neighbors():
+    for neighb in BT1.get_rotation_neighbors():
         s = "{}".format(neighb['w'])
         heappush(h, (1, s, w1_str))
+    num_expanded = 1
     # Perform breadth-first search
     while len(h) > 0:
         (d, s, p) = heappop(h)
         if not s in dist:
+            num_expanded += 1
             dist[s] = d
             prev[s] = p
             if s == w2_str:
@@ -409,18 +425,89 @@ def get_rotation_distance(T1, T2):
             for neighb in T.get_rotation_neighbors():
                 ns = "{}".format(neighb['w'])
                 heappush(h, (d+1, ns, s))
-    # Now backtrace to find sequence from T1 to T2
+    # Now backtrace to find sequence from BT1 to BT2
     sequence = [w2_str]
     while prev[sequence[-1]] != w1_str:
         sequence.append(prev[sequence[-1]])
     sequence.append(w1_str)
     sequence = sequence[::-1]
     sequence = [json.loads(s) for s in sequence]
-    print("dist(T2) = ", dist[w2_str])
-    print("len(sequence) = ", len(sequence))
+    if verbose:
+        print("dist(BT2) = ", dist[w2_str])
+        print("len(sequence) = ", len(sequence))
+        print("{} Expanded".format(num_expanded))
     return sequence
 
-    
+def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
+    """
+    Compute a sequence that realizes the optimal rotation dist
+    between two trees, using brute force breadth-first search
+    Parameters
+    ----------
+    BT1: BinaryTree
+        First tree
+    BT2: BinaryTree
+        Second tree
+    verbose: boolean
+        Whether to print out stats
+    Returns
+    -------
+    sequence: list of ndarray
+        List of strings of alpha sequences along the path from
+        start to finish.  Length of the list is one more than 
+        the rotation distance
+    """
+    import json
+    prev = {} # Stores the tree that came directly
+    # before this tree in a shortest path
+    dist = {} # Stores the distance from BT1 to this tree
+
+    T1 = BT1.to_triangulation()
+    T2 = BT2.to_triangulation()
+    alpha1 = T1.get_horocycle_arclens()
+    alpha1_str = "{}".format(alpha1.tolist())
+    alpha2 = T2.get_horocycle_arclens()
+    alpha2_str = "{}".format(alpha2.tolist())
+    # Heuristic is the L1 distance between alpha sequence
+    # at node and alpha sequence at target
+    heuristic = lambda alpha: 0.25*np.abs(np.sum(alpha-alpha2))
+
+    # Heap will contain 
+    # (heuristic, true distance, alpha string, prev alpha string)
+    h = []  
+    # Setup initial neighbors from first tree
+    for neighb in T1.get_alpha_sequence_neighbors():
+        s = "{}".format(neighb.tolist())
+        heappush(h, (1+heuristic(neighb), 1, s, alpha1_str))
+    num_expanded = 1
+    # Perform breadth-first search
+    while len(h) > 0:
+        (_, d, s, p) = heappop(h)
+        if not s in dist:
+            num_expanded += 1
+            dist[s] = d
+            prev[s] = p
+            if s == alpha2_str:
+                break
+            # Add on neighbors
+            T = HyperbolicDelaunay()
+            T.init_from_alphasequence_unweighted(json.loads(s))
+            for neighb in T.get_alpha_sequence_neighbors():
+                ns = "{}".format(neighb.tolist())
+                heappush(h, (1+heuristic(neighb), d+1, ns, s))
+    # Now backtrace to find sequence from BT1 to BT2
+    sequence = [alpha2_str]
+    while prev[sequence[-1]] != alpha1_str:
+        sequence.append(prev[sequence[-1]])
+    sequence.append(alpha1_str)
+    sequence = sequence[::-1]
+    sequence = [json.loads(s) for s in sequence]
+    if verbose:
+        print("dist(BT2) = ", dist[alpha2_str])
+        print("len(sequence) = ", len(sequence))
+        print("{} Expanded".format(num_expanded))
+    return sequence
+
 
 def get_meet_join(w1, w2):
     """
@@ -519,7 +606,7 @@ def test_rotation_distance_hyperbolic(N):
     T1 = weightsequence_to_binarytree(w1)
     w2 = ws[idx[1]]
     T2 = weightsequence_to_binarytree(w2)
-    sequence = get_rotation_distance(T1, T2)
+    sequence = get_rotation_sequence(T1, T2)
     print("Dist = ", len(sequence)-1)
     plt.figure(figsize=(5, 5))
     for i, w in enumerate(sequence):
@@ -589,16 +676,14 @@ def test_alpha_sequence_neighbors():
     Xs = np.zeros((N+2, 2))
     Xs[:, 0] = np.cos(theta0 + dTheta*np.arange(N+2))
     Xs[:, 1] = np.sin(theta0 + dTheta*np.arange(N+2))
-    for i in range(N-1):
-        alphasi = np.array(alphas)
-        i1, i2, i3, i4, w = T.get_alpha_sequence_diff(i)
-        alphasi[[i1, i2]] -= w
-        alphasi[[i3, i4]] += w
+    neighbors = T.get_alpha_sequence_neighbors(alphas)
+    for i, alphasi in enumerate(neighbors):
         T2 = HyperbolicDelaunay()
         T2.init_from_alphasequence_unweighted(alphasi)
         alphasi = T2.get_horocycle_arclens()
         plt.subplot(dim, dim, i+2)
         T2.render(draw_vars=False)
+        i1, i2, _, _ = T.get_alpha_sequence_diff(i)
         xedge = Xs[[i1+1, i2+1], :]
         plt.plot(xedge[:, 0], xedge[:, 1], c='C2', linestyle='--')
         alphas_plot = np.array([alphasi, alphasi-alphas], dtype=int)
@@ -609,9 +694,34 @@ def test_alpha_sequence_neighbors():
         plt.title(alphas_plot)
     plt.savefig("Alpha_Sequence_Neighbors.svg", bbox_inches='tight')
 
+
+def test_rotation_distance_heuristic(N):
+    ## Step 1: Select two random binary trees and compute
+    ## their rotation distance
+    np.random.seed(3)
+    ws = enumerate_weightsequences(N)
+    idx = np.random.permutation(len(ws))
+    w1 = ws[idx[0]]
+    T1 = weightsequence_to_binarytree(w1)
+    w2 = ws[idx[1]]
+    T2 = weightsequence_to_binarytree(w2)
+    sequence = get_rotation_sequence(T1, T2, verbose=True)
+    sequence2 = get_rotation_sequence_alpha(T1, T2, verbose=True)
+
+    """
+    print("Dist = ", len(sequence)-1)
+    plt.figure(figsize=(5, 5))
+    for i, w in enumerate(sequence):
+        plt.clf()
+        render_tree(w, N)
+        plt.title("Dist {}: {}".format(i, w))
+        plt.savefig("Rot{}.png".format(i))
+    """
+
 if __name__ == '__main__':
     #make_all_tree_figures(7)
     #test_meet_join(7)
     #test_rotation_distance_hyperbolic(5)
     #test_alpha_sequences()
-    test_alpha_sequence_neighbors()
+    #test_alpha_sequence_neighbors()
+    test_rotation_distance_heuristic(11)
