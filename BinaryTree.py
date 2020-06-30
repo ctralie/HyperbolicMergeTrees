@@ -437,10 +437,45 @@ def get_rotation_sequence(BT1, BT2, verbose = False):
         print("{} Expanded".format(num_expanded))
     return sequence
 
-def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
+def alpha_sequence_heuristic(T1, T2):
+    """
+    Return the L1 alpha sequence distance between two trees
+    with the same number of nodes
+    Parameters
+    ----------
+    T1: HyperbolicDelaunay
+        First tree
+    T2: HyperbolicDelaunay
+        Second tree
+    Returns
+    -------
+    float: the distance
+    """
+    alpha1 = T1.get_horocycle_arclens()
+    alpha2 = T2.get_horocycle_arclens()
+    return 0.25*np.sum(np.abs(alpha1-alpha2))
+
+def robinson_folds_heuristic(T1, T2):
+    """
+    Return the Robinson-Foulds distance between two trees
+    with the same number of nodes
+    Parameters
+    ----------
+    T1: HyperbolicDelaunay
+        First tree
+    T2: HyperbolicDelaunay
+        Second tree
+    Returns
+    -------
+    float: the distance
+    """
+    return T1.get_robinson_foulds_unweighted(T2)
+
+
+def get_rotation_sequence_polyheuristic(BT1, BT2, verbose=False, heuristic = alpha_sequence_heuristic):
     """
     Compute a sequence that realizes the optimal rotation dist
-    between two trees, using brute force breadth-first search
+    between two trees, using some heuristic based on 
     Parameters
     ----------
     BT1: BinaryTree
@@ -449,6 +484,8 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
         Second tree
     verbose: boolean
         Whether to print out stats
+    heuristic: function: (HyperbolicDelaunay, HyperbolicDelaunay) -> float
+        An edge flip heuristic between two triangulations
     Returns
     -------
     sequence: list of lists
@@ -466,9 +503,6 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
     alpha1_str = "{}".format(alpha1.tolist())
     alpha2 = T2.get_horocycle_arclens()
     alpha2_str = "{}".format(alpha2.tolist())
-    # Heuristic is the L1 distance between alpha sequence
-    # at node and alpha sequence at target
-    heuristic = lambda alpha: 0.25*np.sum(np.abs(alpha-alpha2))
 
     # Heap will contain 
     # (heuristic, true distance, alpha string, prev alpha string)
@@ -476,11 +510,13 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
     # Setup initial neighbors from first tree
     for neighb in T1.get_alpha_sequence_neighbors():
         s = "{}".format(neighb.tolist())
-        heappush(h, (1+heuristic(neighb), 1, s, alpha1_str))
+        T = HyperbolicDelaunay()
+        T.init_from_alphasequence_unweighted(neighb.tolist())
+        heappush(h, (1+heuristic(T, T2), 1, s, alpha1_str, T))
     num_expanded = 1
     # Perform breadth-first search
     while len(h) > 0:
-        (_, d, s, p) = heappop(h)
+        (_, d, s, p, T) = heappop(h)
         if not s in dist:
             num_expanded += 1
             dist[s] = d
@@ -488,11 +524,11 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
             if s == alpha2_str:
                 break
             # Add on neighbors
-            T = HyperbolicDelaunay()
-            T.init_from_alphasequence_unweighted(json.loads(s))
             for neighb in T.get_alpha_sequence_neighbors():
                 ns = "{}".format(neighb.tolist())
-                heappush(h, (d+1+heuristic(neighb), d+1, ns, s))
+                TNext = HyperbolicDelaunay()
+                TNext.init_from_alphasequence_unweighted(neighb.tolist())
+                heappush(h, (d+1+heuristic(TNext, T2), d+1, ns, s, TNext))
     # Now backtrace to find sequence from BT1 to BT2
     sequence = [alpha2_str]
     while prev[sequence[-1]] != alpha1_str:
@@ -504,7 +540,7 @@ def get_rotation_sequence_alpha(BT1, BT2, verbose=False):
         print("dist(BT2) = ", dist[alpha2_str])
         print("len(sequence) = ", len(sequence))
         print("{} Expanded".format(num_expanded))
-        print("heuristic from start to finish: ", heuristic(alpha1))
+        print("heuristic from start to finish: ", heuristic(T1, T2))
     return sequence
 
 
@@ -694,7 +730,7 @@ def test_alpha_sequence_neighbors():
     plt.savefig("Alpha_Sequence_Neighbors.svg", bbox_inches='tight')
 
 
-def test_rotation_distance_heuristic(N, seed):
+def test_rotation_distance_heuristic(N, seed, do_bfs = True):
     ## Step 1: Select two random binary trees and compute
     ## their rotation distance
     np.random.seed(seed)
@@ -704,22 +740,43 @@ def test_rotation_distance_heuristic(N, seed):
     T1 = weightsequence_to_binarytree(w1)
     w2 = ws[idx[1]]
     T2 = weightsequence_to_binarytree(w2)
-    sequence = get_rotation_sequence(T1, T2, verbose=True)
-    sequence2 = get_rotation_sequence_alpha(T1, T2, verbose=True)
-    while len(sequence) < len(sequence2):
-        sequence.append(sequence[-1])
+    if do_bfs:
+        print("Doing bfs...")
+        sequence = get_rotation_sequence(T1, T2, verbose=True)
+    print("Doing A* alpha heuristic")
+    sequence2 = get_rotation_sequence_polyheuristic(T1, T2, verbose=True)
+    print("Doing A* Robinson-Foulds heuristic")
+    sequence3 = get_rotation_sequence_polyheuristic(T1, T2, verbose=True, heuristic=robinson_folds_heuristic)
+    if do_bfs:
+        while len(sequence) < len(sequence2):
+            sequence.append(sequence[-1])
 
-    plt.figure(figsize=(10, 5))
-    for i, (w, alphas) in enumerate(zip(sequence, sequence2)):
+    if do_bfs:
+        plt.figure(figsize=(15, 5))
+    else:
+        plt.figure(figsize=(10, 5))
+        sequence = sequence2
+    for i, (w, alphas1, alphas2) in enumerate(zip(sequence, sequence2, sequence3)):
         plt.clf()
-        plt.subplot(121)
-        render_tree(w, N)
-        plt.title("Dist {}: {}".format(i, w))
-        plt.subplot(122)
+        if do_bfs:
+            plt.subplot(133)
+            render_tree(w, N)
+            plt.title("Dist {}: {}".format(i, w))
+            plt.subplot(131)
+        else:
+            plt.subplot(121)
         T = HyperbolicDelaunay()
-        T.init_from_alphasequence_unweighted(alphas)
+        T.init_from_alphasequence_unweighted(alphas1)
         T.render(draw_vars=False)
-        plt.title("{}".format(np.array(alphas, dtype=int)))
+        plt.title("Alpha {}".format(np.array(alphas1, dtype=int)))
+        if do_bfs:
+            plt.subplot(132)
+        else:
+            plt.subplot(122)
+        T = HyperbolicDelaunay()
+        T.init_from_alphasequence_unweighted(alphas2)
+        T.render(draw_vars=False)
+        plt.title("RB-Flds {}".format(np.array(alphas2, dtype=int)))
         plt.savefig("Rot{}.png".format(i))
 
 if __name__ == '__main__':
@@ -728,4 +785,4 @@ if __name__ == '__main__':
     #test_rotation_distance_hyperbolic(5)
     #test_alpha_sequences()
     #test_alpha_sequence_neighbors()
-    test_rotation_distance_heuristic(10, 0)
+    test_rotation_distance_heuristic(12, 0, True)

@@ -434,6 +434,34 @@ class HyperbolicDelaunay(object):
             neighbors.append(alphasi)
         return neighbors
 
+    def get_internal_edge_strings(self):
+        """
+        Return a set of tuples (i, j), where i < j are the indices
+        of the two vertices that make up each internal edge
+        Returns
+        -------
+        set of tuple: Tuple representations of all internal edges
+        """
+        ret = set([])
+        for e in self.edges_internal:
+            i = e.head.index
+            j = e.pair.head.index
+            i, j = min(i, j), max(i, j)
+            ret.add((i, j))
+        return ret
+
+    def get_robinson_foulds_unweighted(self, other):
+        """
+        Compute the Robinson-Founds distance between the topology
+        of this tree and the topology of another tree
+        Parameters
+        ----------
+        other: HyperbolicDelaunay
+
+        """
+        set1 = self.get_internal_edge_strings()
+        set2 = other.get_internal_edge_strings()
+        return len(set1.symmetric_difference(set2))/2
 
 
     def get_equations(self):
