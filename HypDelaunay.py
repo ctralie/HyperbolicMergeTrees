@@ -389,6 +389,72 @@ class HyperbolicDelaunay(object):
             e.face = tri
         self.triangles.append(tri)
 
+
+    def get_merge_tree_rec(self, edge, m_node, y):
+        """
+        Wrap into a merge tree object
+        Parameters
+        ---------
+        edge: HDTHEdge
+            The current half-edge
+        m_node: MergeNode
+            The corresponding merge tree node
+        y: float
+            The height at this node
+        """
+        if edge.pair.face:
+            # The node has two children
+            lh = y - self.weight_dict[edge.pair.next.index]
+            left = MergeNode(np.array([0, lh]))
+            m_node.addChild(left)
+            self.get_merge_tree_rec(edge.pair.next, left, lh)
+            
+            rh = y - self.weight_dict[edge.pair.prev.index]
+            right = MergeNode(np.array([0, rh]))
+            m_node.addChild(right)
+            self.get_merge_tree_rec(edge.pair.prev, right, rh)
+
+    def set_node_xcoord_rec(self, m_node):
+        """
+        A helper function to recursively set the x position
+        of a merge node (assuming each merge tree node has 0
+        or 2 children)
+        Parameters
+        ----------
+        m_node: MergeNode
+            Current merge tree node
+        """
+        if len(m_node.children) > 0:
+            self.set_node_xcoord_rec(m_node.children[0])
+        m_node.X[0] = self.node_index
+        self.node_index += 1
+        if len(m_node.children) > 0:
+            self.set_node_xcoord_rec(m_node.children[1])
+
+    def get_merge_tree(self, estart = 0):
+        """
+        Extract a merge tree, starting at a particular edge
+        Parameters
+        ----------
+        estart: int
+            Index of the edge to start on
+        Returns
+        -------
+        T: MergeTree
+            Merge tree whose root is at this edge
+        """
+        e = self.edges[1]
+        for i in range(estart):
+            e = e.prev
+        root = MergeNode(np.array([0, 0]))
+        self.get_merge_tree_rec(e, root, 0)
+        MT = MergeTree()
+        MT.root = root
+        self.node_index = 0
+        self.set_node_xcoord_rec(root)
+        return MT
+        
+
     def get_alpha_sequence_diff(self, idx):
         """
         Compute the indices that get updated by an 

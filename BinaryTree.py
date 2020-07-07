@@ -779,10 +779,24 @@ def test_rotation_distance_heuristic(N, seed, do_bfs = True):
         plt.title("RB-Flds {}".format(np.array(alphas2, dtype=int)))
         plt.savefig("Rot{}.png".format(i))
 
+def test_flexion(N):
+    T1 = weightsequence_to_binarytree(np.arange(N)+1)
+    T = T1.to_triangulation()
+    plt.figure(figsize=(10, 5))
+    for i in range(N+3):
+        plt.clf()
+        MT = T.get_merge_tree(i)
+        plt.subplot(121)
+        T.render(draw_vars=False)
+        plt.subplot(122)
+        MT.render(np.array([0, 0]))
+        plt.savefig("{}.png".format(i))
+
 if __name__ == '__main__':
     #make_all_tree_figures(7)
     #test_meet_join(7)
     #test_rotation_distance_hyperbolic(5)
     #test_alpha_sequences()
     #test_alpha_sequence_neighbors()
-    test_rotation_distance_heuristic(12, 0, True)
+    #test_rotation_distance_heuristic(12, 0, True)
+    test_flexion(6)

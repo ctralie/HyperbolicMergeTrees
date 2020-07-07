@@ -547,7 +547,7 @@ class MergeTree(object):
 def UFFind(UFP, u):
     """
     Union find "find" with path-compression
-    :param UFP: A list of pointers to reprsentative nodes
+    :param UFP: A list of pointers to representative nodes
     :param u: Index of the node to find
     :return: Index of the representative of the component of u
     """
