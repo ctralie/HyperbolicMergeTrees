@@ -780,16 +780,31 @@ def test_rotation_distance_heuristic(N, seed, do_bfs = True):
         plt.savefig("Rot{}.png".format(i))
 
 def test_flexion(N):
+    from persim import plot_diagrams
     T1 = weightsequence_to_binarytree(np.arange(N)+1)
-    T = T1.to_triangulation()
-    plt.figure(figsize=(10, 5))
+    T1 = T1.to_triangulation()
+    T2 = weightsequence_to_binarytree(np.ones(N))
+    T2 = T2.to_triangulation()
+    plt.figure(figsize=(15, 10))
     for i in range(N+3):
         plt.clf()
-        MT = T.get_merge_tree(i)
-        plt.subplot(121)
-        T.render(draw_vars=False)
-        plt.subplot(122)
+        MT = T1.get_merge_tree(i)
+        plt.subplot(231)
+        T1.render(draw_vars=False)
+        plt.subplot(232)
         MT.render(np.array([0, 0]))
+        I1 = MT.get_persistence_diagram()
+
+        MT = T2.get_merge_tree(i)
+        I2 = MT.get_persistence_diagram()
+        plt.subplot(234)
+        T2.render(draw_vars=False)
+        plt.subplot(235)
+        MT.render(np.array([0, 0]))
+
+        plt.subplot(233)
+        plot_diagrams(I1)
+        plt.scatter(I2[:, 0], I2[:, 1], 100, marker='x')
         plt.savefig("{}.png".format(i))
 
 if __name__ == '__main__':

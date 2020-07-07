@@ -544,6 +544,74 @@ class MergeTree(object):
         b.parent = v
         return {'cost':0, 'v':v}
 
+    ##########################################################
+    #            Persistence Diagram Computation             #
+    ##########################################################
+
+    def get_persistence_diagram(self, essential=False):
+        """
+        Compute the persistence diagram of this merge tree using
+        the union find algorithm
+        For now, assume the merge tree is generic (either 2 or 0
+        children per node, excluding the root node)
+        Parameters
+        ----------
+        essential: boolean
+            Whether to add the essential class
+        Returns
+        -------
+        I: ndarray(N, 2)
+            The persistence diagram
+        """
+        ## Step 1: Sort all of the nodes in ascending order
+        ## of their y value
+        stack = [self.root]
+        nodes = []
+        heights = []
+        while len(stack) > 0:
+            node = stack.pop()
+            nodes.append(node)
+            heights.append(node.getfVal())
+            for C in node.children:
+                stack.append(C)
+        heights = np.array(heights)
+        idx = np.argsort(heights)
+        heights = heights[idx]
+        nodes = [nodes[i] for i in idx]
+        for i, node in enumerate(nodes):
+            node.ufidx = i # Keep track of order of entry for union find
+
+        ## Step 2: Do sublevelset filtration
+        N = len(nodes)
+        UFP = np.arange(N) #Pointer to oldest indices
+        UFR = np.arange(N) #Representatives of classes
+        idxorder = np.arange(N)
+        I = [] #Persistence diagram
+        for i, node in enumerate(nodes):
+            # If this point is not a leaf node, then two classes
+            # are merging
+            if len(node.children) > 0:
+                #Find the oldest class, merge earlier classes with this class,
+                #and record the merge events and birth/death times
+                oldestChild = node.children[np.argmin([UFFind(UFP, c.ufidx) for c in node.children])]
+                #No matter, what, the current node becomes part of the
+                #oldest class to which it is connected
+                UFUnion(UFP, oldestChild.ufidx, i, idxorder)
+                for c in node.children:
+                    if not (c == oldestChild):
+                        #Record persistence event
+                        I.append([heights[UFFind(UFP, c.ufidx)], heights[i]])
+                    UFUnion(UFP, oldestChild.ufidx, c.ufidx, idxorder)
+                #Change the representative for this class to be the
+                #saddle point
+                UFR[oldestChild.ufidx] = i
+        if essential:
+            [b, d] = [np.min(heights), np.max(heights)]
+            I.append([b, d])
+        I = np.array(I)
+        return I
+
+
 def UFFind(UFP, u):
     """
     Union find "find" with path-compression

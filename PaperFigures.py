@@ -4,9 +4,7 @@ Purpose: To provide functions to help create illustrative figures
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from svg.path import parse_path
-import xml.etree.ElementTree as ET
-import scipy.interpolate as interp
+from persim import plot_diagrams
 from MergeTree import *
 
 def loadSVGPaths(filename = "paths.svg"):
@@ -17,6 +15,8 @@ def loadSVGPaths(filename = "paths.svg"):
     :returns Paths: A dictionary of svg path objects indexed by ID
         specified in the svg file
     """
+    from svg.path import parse_path
+    import xml.etree.ElementTree as ET
     tree = ET.parse(filename)
     root = tree.getroot()
     Paths = {}
@@ -43,19 +43,16 @@ def paramSVGPath(P, t):
     return X
 
 def makeMergeTreeConceptFigure():
+    import scipy.interpolate as interp
     path = loadSVGPaths("curve.svg")
-    path = path[path.keys()[0]]
+    path = path[list(path.keys())[0]]
     N = 40
     x = paramSVGPath(path, np.linspace(0, 1, N))
     x[:, 1] *= -1
     x -= np.min(x, axis=0)[None, :]
     x[:, 1] /= np.max(x[:, 1])
     x[:, 1] += 0.2
-    # Figure out parameterization of drawn path
-    t0 = x[:, 0]/np.max(x[:, 0])
-    t1 = np.linspace(0, 1, N)
-    x[:, 1] = interp.spline(t0, x[:, 1], t1)
-    x[:, 0] = t1
+
     (MT, PS, I) = mergeTreeFrom1DTimeSeries(x[:, 1])
 
     critidx = [k for k in MT.keys()]
@@ -64,8 +61,8 @@ def makeMergeTreeConceptFigure():
     critidx = np.unique(np.array(critidx))
 
     T = wrapMergeTreeTimeSeries(MT, PS, x)
-    T.render(offset=np.array([0, 0]))
 
+    T.render(offset=np.array([0, 0]))
     plt.plot(x[:, 0], x[:, 1])
     plt.scatter(x[:, 0], x[:, 1])
     plt.plot(x[:, 0], 0*x[:, 0])
