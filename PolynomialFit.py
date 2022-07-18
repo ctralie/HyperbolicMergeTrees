@@ -40,7 +40,6 @@ if __name__ == '__main__':
     X = np.array([[x1, y1], [x2, y2], [x3, y3]])
     Y = polyFit(X, xs, doPlot = False)
     plt.plot(Y[:, 0], Y[:, 1], 'k')
-    plt.hold(True)
     plt.scatter(X[:, 0], X[:, 1], 20)
     plt.axis('equal')
     plt.show()

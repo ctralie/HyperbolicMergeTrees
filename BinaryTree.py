@@ -1,3 +1,4 @@
+from os import posix_spawnp
 import numpy as np 
 import matplotlib.pyplot as plt
 from collections import deque
@@ -16,6 +17,127 @@ class BinaryNode(object):
         self.order = 0
         self.size = 1
         self.weight = 0
+        self.al = -np.pi/10 # Angle left
+        self.ar = np.pi/10 # Angle right
+        self.pos = np.array([0, 0])
+    
+    def update_pos(self, angle=0, pos=np.array([0, 0])):
+        """
+        Recursively update the positions based on angle
+
+        Parameters
+        ----------
+        angle: float
+            Angle in radians pointing into this node
+        pos: ndarray(2)
+            x/y coordinates of this node
+        """
+        self.pos = pos
+        if self.left:
+            al = angle + self.al
+            posl = pos + np.array([np.cos(al), np.sin(al)])
+            self.left.update_pos(al, posl)
+        if self.right:
+            ar = angle + self.ar
+            posr = pos + np.array([np.cos(ar), np.sin(ar)])
+            self.right.update_pos(ar, posr)
+    
+    def draw(self, leaf_idx, internal_idx, angle=0):
+        pos = self.pos
+        plt.scatter([pos[0]], [pos[1]], 20, c='k')
+        if not self.left:
+            plt.text(pos[0], pos[1], "({}, {:.1f})".format(leaf_idx[0], angle*180/np.pi))
+            leaf_idx[0] += 1
+        else:
+            #plt.text(pos[0], pos[1], "{}, ({:.1f}, {:.1f})".format(internal_idx[0], self.al*180/np.pi, self.ar*180/np.pi))
+            pos2 = self.left.pos
+            plt.plot([pos[0], pos2[0]], [pos[1], pos2[1]], c='k')
+            if self.left.left:
+                internal_idx[0] += 1
+            self.left.draw(leaf_idx, internal_idx, angle+self.al)
+
+            pos2 = self.right.pos
+            plt.plot([pos[0], pos2[0]], [pos[1], pos2[1]], c='k')
+            if self.right.right:
+                internal_idx[0] += 1
+            self.right.draw(leaf_idx, internal_idx, angle+self.ar)
+        
+    def get_angle_equations(self, eq, all_eq, N, internal_idx, leaf_idx):
+        """
+        Get angle equations
+
+        Parameters
+        ----------
+        eq: list of [[idx, coeff]]
+            Current equation being constructed
+        all_eq: Dictionary of [list of [idx, coeff], value]
+            All equations
+        N: int
+            Total number of leaf nodes
+        internal_idx: list of [int]
+            Preorder index of current internal node
+        leaf_idx: list of [int]
+            Inorder index of the current leaf node
+        """
+        ## TODO: Fix inorder of leaf nodes
+        if not self.left and not self.right:
+            eq.append(2*np.pi*leaf_idx[0]/N)
+            all_eq[leaf_idx[0]] = eq.copy()
+            leaf_idx[0] += 1
+        else:
+            # Recursively create equations towards the left
+            idx = internal_idx[0]
+            eql = eq.copy()
+            eql.append([idx*2, 1])
+            if self.left.left:
+                internal_idx[0] += 1
+            self.left.get_angle_equations(eql, all_eq, N, internal_idx, leaf_idx)
+            # Recursively create equations towards the right
+            eqr = eq.copy()
+            eqr.append([idx*2+1, 1])
+            if self.right.right:
+                internal_idx[0] += 1
+            self.right.get_angle_equations(eqr, all_eq, N, internal_idx, leaf_idx)
+
+    def set_angles(self, internal_idx, angles):
+        """
+        Set the angles of all internal nodes
+
+        Parameters
+        ----------
+        internal_idx: list of [int]
+            Preorder index of current internal node
+        angles: ndarray(2*n_internal)
+            All of the internal angles
+        """
+        ## TODO: Fix inorder of leaf nodes
+        if self.left and self.right: # Internal node
+            # Recursively create equations towards the left
+            idx = internal_idx[0]
+            self.al = angles[idx*2]
+            self.ar = angles[idx*2+1]
+            if self.left.left:
+                internal_idx[0] += 1
+            self.left.set_angles(internal_idx, angles)
+            # Recursively create equations towards the right
+            if self.right.right:
+                internal_idx[0] += 1
+            self.right.set_angles(internal_idx, angles)
+
+    def update_inorder(self, node_deque):
+        """
+        Compute the order of this node according to an 
+        inorder traversal
+        Parameters
+        ----------
+        node_deque: deque
+            A growing list of nodes in order
+        """
+        if self.left:
+            self.left.update_inorder(node_deque)
+        node_deque.append(self)
+        if self.right:
+            self.right.update_inorder(node_deque)
     
     def update_subtree_size(self):
         """
@@ -50,21 +172,6 @@ class BinaryNode(object):
                 weight += self.right.update_subtree_weight()
         self.weight = weight
         return weight
-        
-    def update_inorder_rec(self, node_deque):
-        """
-        Compute the order of this node according to an 
-        inorder traversal
-        Parameters
-        ----------
-        node_deque: deque
-            A growing list of nodes in order
-        """
-        if self.left:
-            self.left.update_inorder_rec(node_deque)
-        node_deque.append(self)
-        if self.right:
-            self.right.update_inorder_rec(node_deque)
         
     def get_weight_sequence(self):
         """
@@ -190,6 +297,14 @@ class BinaryTree(object):
     def __init__(self):
         self.root = BinaryNode()
 
+    def draw(self):
+        if self.root:
+            leaf_idx = [0]
+            internal_idx = [0]
+            self.root.update_pos()
+            self.root.draw(leaf_idx, internal_idx)
+            plt.axis("equal")
+
     def update_inorder(self):
         """
         Update the order of all nodes using inorder
@@ -199,10 +314,27 @@ class BinaryTree(object):
             A deque of BinaryNode objects in inorder
         """
         nodes_deque = deque()
-        self.root.update_inorder_rec(nodes_deque)
+        self.root.update_inorder(nodes_deque)
         for i, n in enumerate(nodes_deque):
             n.order = i
         return nodes_deque
+
+    def get_angle_equations(self):
+        all_eq = {}
+        nodes = self.update_inorder()
+        N = (len(nodes)+1)//2
+        print("n_leaves = ", N)
+        if self.root:
+            eq = []
+            internal_idx = [0]
+            leaf_idx = [0]
+            self.root.get_angle_equations(eq, all_eq, N, internal_idx, leaf_idx)
+        return all_eq
+    
+    def set_angles(self, angles):
+        if self.root:
+            internal_idx = [0]
+            self.root.set_angles(internal_idx, angles)
 
     def to_merge_tree_rec(self, y, node, m_node):
         """
@@ -586,24 +718,16 @@ def make_all_tree_figures(N):
     a certain size
     """
     ws = enumerate_weightsequences(N)
-    rows = int(N+1)/2
-    plt.figure(figsize=(10, 5*rows))
+    plt.figure(figsize=(10, 5))
     for i, w in enumerate(ws):
         plt.clf()
-        plt.subplot(rows, 2, 1)
+        plt.subplot(1, 2, 1)
         T, MT = render_tree(w, N)
         plt.title("{}\n{} of {}".format(w, i+1, len(ws)))
-        plt.subplot(rows, 2, 2)
+        plt.subplot(1, 2, 2)
         HD = HyperbolicDelaunay()
         HD.init_from_mergetree(MT)
-        HD.render()
-
-        ws_rot = T.get_rotation_neighbors()
-        for k, wn in enumerate(ws_rot):
-            plt.subplot(rows, 2, 3+k)
-            render_tree(wn['w'], N)
-            plt.title("{} Neighbor {}\n{}".format(wn['dir'], k+1, wn['w']))
-
+        HD.render(draw_vars=False)
         plt.savefig("{}.png".format(i))
 
 def test_meet_join(N):
@@ -779,18 +903,60 @@ def test_rotation_distance_heuristic(N, seed, do_bfs = True):
         plt.title("RB-Flds {}".format(np.array(alphas2, dtype=int)))
         plt.savefig("Rot{}.png".format(i))
 
+def make_counts_dict(I):
+    """
+    Deal with multiset properties of persistence diagram
+    by creating a dictionary of counts
+    Parameters
+    ----------
+    I: ndarray(N, 2)
+        Persistence diagram
+    """
+    counts = {}
+    for i in range(I.shape[0]):
+        s = "{}, {}".format(I[i, 0], I[i, 1])
+        if s in counts:
+            counts[s] += 1
+        else:
+            counts[s] = 1
+    return counts
+
 def test_flexion(N):
     from persim import plot_diagrams
-    T1 = weightsequence_to_binarytree(np.arange(N)+1)
-    T1 = T1.to_triangulation()
-    T2 = weightsequence_to_binarytree(np.ones(N))
-    T2 = T2.to_triangulation()
+    #BT1 = weightsequence_to_binarytree(np.arange(N)+1)
+    #BT2 = weightsequence_to_binarytree(np.ones(N))
+
+    np.random.seed(5)
+    ws = enumerate_weightsequences(N)
+    idx = np.random.permutation(len(ws))
+    w1 = ws[idx[0]]
+    BT1 = weightsequence_to_binarytree(w1)
+    neighbs = BT1.get_rotation_neighbors()
+    w2 = neighbs[np.random.randint(len(neighbs))]['w']
+    BT2 = weightsequence_to_binarytree(w2)
+    neighbs = BT2.get_rotation_neighbors()
+    w2 = neighbs[np.random.randint(len(neighbs))]['w']
+    BT2 = weightsequence_to_binarytree(w2)
+
+    T1 = BT1.to_triangulation()
+    T2 = BT2.to_triangulation()
+
+    sequence = get_rotation_sequence_polyheuristic(BT1, BT2, verbose=True)
+    print("True rotation distance: ", len(sequence)-1)
+
+    dTheta = 2*np.pi/(N+2)
+    theta0 = np.pi/2 - dTheta/2
+    Xs = np.zeros((N+3, 2))
+    Xs[:, 0] = np.cos(theta0 + dTheta*np.arange(N+3))
+    Xs[:, 1] = np.sin(theta0 + dTheta*np.arange(N+3))
+
     plt.figure(figsize=(15, 10))
-    for i in range(N+3):
+    for i in range(N+2):
         plt.clf()
         MT = T1.get_merge_tree(i)
         plt.subplot(231)
         T1.render(draw_vars=False)
+        plt.plot(Xs[[i, i+1], 0], Xs[[i, i+1], 1], c='C0', linewidth=5)
         plt.subplot(232)
         MT.render(np.array([0, 0]))
         I1 = MT.get_persistence_diagram()
@@ -799,8 +965,31 @@ def test_flexion(N):
         I2 = MT.get_persistence_diagram()
         plt.subplot(234)
         T2.render(draw_vars=False)
+        plt.plot(Xs[[i, i+1], 0], Xs[[i, i+1], 1], c='C0', linewidth=5)
         plt.subplot(235)
         MT.render(np.array([0, 0]))
+
+        # Figure out which dots are not in common, possibly with
+        # multiplicity greater than 1
+        I1Dots = make_counts_dict(np.array(I1, dtype=int))
+        I2Dots = make_counts_dict(np.array(I2, dtype=int))
+        diff_text = "Unique Top:\n"
+        for s in I1Dots:
+            if not s in I2Dots:
+                diff_text += s + "\n"
+            elif I1Dots[s] > I2Dots[s]:
+                for k in range(I1Dots[s] - I2Dots[s]):
+                    diff_text += s + "\n"
+        diff_text += "\nUnique Bottom:\n"
+        for s in I2Dots:
+            if not s in I1Dots:
+                diff_text += s + "\n"
+            elif I2Dots[s] > I1Dots[s]:
+                for k in range(I2Dots[s] - I1Dots[s]):
+                    diff_text += s + "\n"
+        plt.subplot(236)
+        plt.text(0.1, 0.1, diff_text)
+        plt.axis('off')
 
         plt.subplot(233)
         plot_diagrams(I1)
@@ -808,10 +997,10 @@ def test_flexion(N):
         plt.savefig("{}.png".format(i))
 
 if __name__ == '__main__':
-    #make_all_tree_figures(7)
+    make_all_tree_figures(3)
     #test_meet_join(7)
     #test_rotation_distance_hyperbolic(5)
     #test_alpha_sequences()
     #test_alpha_sequence_neighbors()
     #test_rotation_distance_heuristic(12, 0, True)
-    test_flexion(6)
+    #test_flexion(10)
